@@ -6,6 +6,12 @@
 #include <eigen3/Eigen/Dense>
 #include "unitree/dds_wrapper/common/unitree_joystick.hpp"
 
+#include <pinocchio/algorithm/jacobian.hpp>
+#include <pinocchio/algorithm/joint-configuration.hpp>
+#include <pinocchio/algorithm/kinematics.hpp>
+#include <pinocchio/algorithm/rnea.hpp>
+#include <pinocchio/parsers/urdf.hpp>
+
 namespace isaaclab
 {
 
@@ -39,12 +45,24 @@ struct ArticulationData
     std::vector<float> joint_ids_map;
 
     unitree::common::UnitreeJoystick* joystick = nullptr;
+
+    isaaclab::MotionLoader* motion_loader = nullptr;
+
+    // Pinocchio
+    pinocchio::Model model_biped_fixed;
+    int model_nv;
+    pinocchio::Data data_biped_fixed;
 };
 
 class Articulation
 {
 public:
-    Articulation(){}
+    Articulation(std::string urdf_pathIn = ""){
+        pinocchio::urdf::buildModel(urdf_pathIn, data.model_biped_fixed);
+
+        data.data_biped_fixed = pinocchio::Data(data.model_biped_fixed);
+        data.model_nv = data.model_biped_fixed.nv;
+    }
 
     virtual void update(){};
 

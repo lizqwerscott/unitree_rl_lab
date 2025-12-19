@@ -3,6 +3,19 @@
 
 #pragma once
 
+#include <string>
+
+#include <pinocchio/algorithm/aba.hpp>
+#include <pinocchio/algorithm/center-of-mass.hpp>
+#include <pinocchio/algorithm/centroidal.hpp>
+#include <pinocchio/algorithm/crba.hpp>
+#include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/algorithm/jacobian.hpp>
+#include <pinocchio/algorithm/joint-configuration.hpp>
+#include <pinocchio/algorithm/kinematics.hpp>
+#include <pinocchio/algorithm/rnea.hpp>
+#include <pinocchio/parsers/urdf.hpp>
+
 #include "isaaclab/envs/manager_based_rl_env.h"
 
 namespace isaaclab
@@ -115,8 +128,16 @@ REGISTER_OBSERVATION(velocity_commands)
 
     const auto cfg = env->cfg["commands"]["base_velocity"]["ranges"];
 
-    obs[0] = std::clamp(joystick->ly(), cfg["lin_vel_x"][0].as<float>(), cfg["lin_vel_x"][1].as<float>());
-    obs[1] = std::clamp(-joystick->lx(), cfg["lin_vel_y"][0].as<float>(), cfg["lin_vel_y"][1].as<float>());
+    // 优化：使用线性映射，根据摇杆输入的正负分别使用最大和最小速度的绝对值
+    float ly = joystick->ly();
+    float min_vel = cfg["lin_vel_x"][0].as<float>();
+    float max_vel = cfg["lin_vel_x"][1].as<float>();
+    obs[0] = ly * (ly < 0 ? std::abs(min_vel) : std::abs(max_vel));
+    min_vel = cfg["lin_vel_y"][0].as<float>();
+    max_vel = cfg["lin_vel_y"][1].as<float>();
+    float lx = -joystick->lx();
+    obs[1] = lx * (lx < 0 ? std::abs(min_vel) : std::abs(max_vel));
+    // obs[1] = std::clamp(-joystick->lx(), cfg["lin_vel_y"][0].as<float>(), cfg["lin_vel_y"][1].as<float>());
     obs[2] = std::clamp(-joystick->rx(), cfg["ang_vel_z"][0].as<float>(), cfg["ang_vel_z"][1].as<float>());
 
     return obs;
@@ -136,5 +157,80 @@ REGISTER_OBSERVATION(gait_phase)
     return obs;
 }
 
+// for amp
+Eigen::Quaternionf quat_yaw_quat(const Eigen::Quaternionf& quat) {
+    // Extract quaternion components
+    double qw = quat.w();
+    double qx = quat.x();
+    double qy = quat.y();
+    double qz = quat.z();
+
+    // Compute yaw angle
+    // yaw = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy*qy + qz*qz))
+    double yaw = std::atan2(2.0f * (qw * qz + qx * qy), 
+                          1.0f - 2.0f * (qy * qy + qz * qz));
+
+    // Create quaternion with only yaw rotation around Z-axis
+    Eigen::Quaternionf quat_yaw;
+    quat_yaw = Eigen::AngleAxisf(yaw, Eigen::Vector3f::UnitZ());
+    
+    return quat_yaw.normalized();
+}
+
+
+REGISTER_OBSERVATION(root_local_rot_tan_norm)
+{
+    auto & asset = env->robot;
+    auto & root_quat = asset->data.root_quat_w;
+    Eigen::Quaternionf yaw_quat = quat_yaw_quat(root_quat);
+
+    Eigen::Quaternionf yaw_quat_conj = yaw_quat.conjugate();
+    
+    // Step 3: Multiply: yaw_quat_conj * root_quat
+    Eigen::Quaternionf root_quat_local = yaw_quat_conj * root_quat;
+
+    Eigen::Matrix3f rot_mat = root_quat_local.toRotationMatrix();
+    std::vector<float> data(6);
+    
+    // 使用旋转矩阵的第一列作为切向量，最后一列作为法向量
+    // 第一列 (column 0): tangent vector
+    data[0] = rot_mat(0, 0);
+    data[1] = rot_mat(1, 0);
+    data[2] = rot_mat(2, 0);
+    
+    // // 最后一列 (column 2): normal vector  
+    data[3] = rot_mat(0, 2);
+    data[4] = rot_mat(1, 2);
+    data[5] = rot_mat(2, 2);
+            
+    return data;
+}
+
+REGISTER_OBSERVATION(key_body_pos_b)
+{
+    auto & asset = env->robot;
+    auto & quat = asset->data.root_quat_w;
+    Eigen::Matrix3f rot_mat = quat.toRotationMatrix();
+    std::vector<std::string> body_names;
+    try {
+        body_names = params["asset_cfg"]["body_names"].as<std::vector<std::string>>();
+    } catch(const std::exception& e) {
+    }
+    std::vector<float> data(body_names.size() * 3);
+    std::vector<pinocchio::FrameIndex> body_ids;
+    for (int i = 0; i < body_names.size(); i++) {
+        
+        pinocchio::FrameIndex id = asset->data.model_biped_fixed.getFrameId(body_names[i]);
+        pinocchio::updateFramePlacement(asset->data.model_biped_fixed, asset->data.data_biped_fixed, id);
+        
+        Eigen::Vector3d pos = asset->data.data_biped_fixed.oMf[id].translation();
+
+        data[i * 3 + 0] = pos(0);
+        data[i * 3 + 1] = pos(1);
+        data[i * 3 + 2] = pos(2);
+    }
+            
+    return data;
+}
 }
 }
