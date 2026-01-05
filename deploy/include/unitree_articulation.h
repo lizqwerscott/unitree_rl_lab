@@ -5,6 +5,8 @@
 
 #include "isaaclab/assets/articulation/articulation.h"
 
+const std::string UNITREE_ROS_DIR = "PATH/UNITREE_ROS/";
+
 namespace unitree
 {
 
@@ -18,7 +20,7 @@ public:
         data.joystick = &lowstate->joystick;
         std::string urdf_pathIn;
         if (g1_29p) {
-            urdf_pathIn = std::string("/home/zhipengli/ai/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.urdf");
+            urdf_pathIn = std::string(UNITREE_ROS_DIR + "robots/g1_description/g1_29dof_rev_1_0.urdf");
             ROBOT_NUM = 29;
 
             robot_control_index = {
@@ -29,7 +31,7 @@ public:
                 22, 23, 24, 25, 26, 27, 28  // right arms
             };
         } else {
-            urdf_pathIn = std::string("/home/zhipengli/ai/unitree_ros/robots/g1_description/g1_23dof_rev_1_0.urdf");
+            urdf_pathIn = std::string(UNITREE_ROS_DIR + "robots/g1_description/g1_23dof_rev_1_0.urdf");
             ROBOT_NUM = 23;
             
             robot_control_index = {

@@ -113,7 +113,7 @@ State_Mimic::State_Mimic(int state_mode, std::string state_string)
     auto cfg = param::config["FSM"][state_string];
     auto policy_dir = param::parser_policy_dir(cfg["policy_dir"].as<std::string>());
 
-    auto articulation = std::make_shared<unitree::BaseArticulation<LowState_t::SharedPtr>>(FSMState::lowstate);
+    auto articulation = std::make_shared<unitree::BaseArticulation<LowState_t::SharedPtr>>(FSMState::lowstate, true);
 
     std::filesystem::path motion_file = cfg["motion_file"].as<std::string>();
     if(!motion_file.is_absolute()) {
