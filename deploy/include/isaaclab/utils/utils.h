@@ -48,5 +48,24 @@ inline std::vector<std::vector<float>> load_csv(const std::string& filename)
     file.close();
     return data;
 }
+    
+inline Eigen::Quaternionf quat_yaw_quat(const Eigen::Quaternionf& quat) {
+    // Extract quaternion components
+    double qw = quat.w();
+    double qx = quat.x();
+    double qy = quat.y();
+    double qz = quat.z();
+
+    // Compute yaw angle
+    // yaw = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy*qy + qz*qz))
+    double yaw = std::atan2(2.0f * (qw * qz + qx * qy), 
+                          1.0f - 2.0f * (qy * qy + qz * qz));
+
+    // Create quaternion with only yaw rotation around Z-axis
+    Eigen::Quaternionf quat_yaw;
+    quat_yaw = Eigen::AngleAxisf(yaw, Eigen::Vector3f::UnitZ());
+    
+    return quat_yaw.normalized();
+}
 
 }

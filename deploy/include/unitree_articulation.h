@@ -12,10 +12,39 @@ template <typename LowStatePtr>
 class BaseArticulation : public isaaclab::Articulation
 {
 public:
-    BaseArticulation(LowStatePtr lowstate_, std::string urdf_pathIn = "")
-    : isaaclab::Articulation(urdf_pathIn), lowstate(lowstate_)
+    BaseArticulation(LowStatePtr lowstate_, bool g1_29p)
+    : lowstate(lowstate_)
     {
         data.joystick = &lowstate->joystick;
+        std::string urdf_pathIn;
+        if (g1_29p) {
+            urdf_pathIn = std::string("/home/zhipengli/ai/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.urdf");
+            ROBOT_NUM = 29;
+
+            robot_control_index = {
+                0,  1,  2,  3,  4,  5,      // left leg
+                6,  7,  8,  9,  10, 11,     // right leg
+                12, 13, 14,                 // waist
+                15, 16, 17, 18, 19, 20, 21, // left arms
+                22, 23, 24, 25, 26, 27, 28  // right arms
+            };
+        } else {
+            urdf_pathIn = std::string("/home/zhipengli/ai/unitree_ros/robots/g1_description/g1_23dof_rev_1_0.urdf");
+            ROBOT_NUM = 23;
+            
+            robot_control_index = {
+                0,  1,  2,  3,  4,  5,      // left leg
+                6,  7,  8,  9,  10, 11,     // right leg
+                12, -1, -1,                 // waist
+                13, 14, 15, 16, 17, -1, -1, // left arms
+                18, 19, 20, 21, 22, -1, -1  // right arms
+            };
+        }
+    
+        pinocchio::urdf::buildModel(urdf_pathIn, data.model_biped_fixed);
+
+        data.data_biped_fixed = pinocchio::Data(data.model_biped_fixed);
+        data.model_nv = data.model_biped_fixed.nv;
     }
 
     void update() override
@@ -40,19 +69,8 @@ public:
             data.joint_vel[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].dq();
         }
 
-        const int MOTOR_NUM = 29;
-
-        const std::array<float, MOTOR_NUM> robot_control_index{
-            0,  1,  2,  3,  4,  5,      // left leg
-            6,  7,  8,  9,  10, 11,     // right leg
-            12, -1, -1,                 // waist
-            13, 14, 15, 16, 17, -1, -1, // left arms
-            18, 19, 20, 21, 22, -1, -1  // right arms
-        };
+        Eigen::VectorXd q_fixed = Eigen::VectorXd::Zero(ROBOT_NUM);
         
-        Eigen::VectorXd q_fixed = Eigen::VectorXd::Zero(23);
-        
-
         for (int i = 0; i < MOTOR_NUM; ++i) {
             if (robot_control_index[i] < 0) {
                 continue;
@@ -65,6 +83,10 @@ public:
     }
     
     LowStatePtr lowstate;
+    bool g1_29p;
+    int MOTOR_NUM = 29;
+    int ROBOT_NUM;
+    std::vector<float> robot_control_index;
 };
 
 }

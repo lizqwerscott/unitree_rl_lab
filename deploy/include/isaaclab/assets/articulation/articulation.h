@@ -57,12 +57,7 @@ struct ArticulationData
 class Articulation
 {
 public:
-    Articulation(std::string urdf_pathIn = ""){
-        pinocchio::urdf::buildModel(urdf_pathIn, data.model_biped_fixed);
-
-        data.data_biped_fixed = pinocchio::Data(data.model_biped_fixed);
-        data.model_nv = data.model_biped_fixed.nv;
-    }
+    Articulation(){}
 
     virtual void update(){};
 
