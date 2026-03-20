@@ -6,6 +6,8 @@
 #include <eigen3/Eigen/Dense>
 #include "unitree/dds_wrapper/common/unitree_joystick.hpp"
 
+#include "isaaclab/utils/circular_buffer.h"
+
 namespace isaaclab
 {
 
@@ -21,7 +23,7 @@ struct ArticulationData
 
     // Joint positions of all joints.
     Eigen::VectorXf joint_pos;
-    
+
     // Default joint positions of all joints.
     Eigen::VectorXf default_joint_pos;
 
@@ -39,6 +41,8 @@ struct ArticulationData
     std::vector<float> joint_ids_map;
 
     unitree::common::UnitreeJoystick* joystick = nullptr;
+
+    std::unique_ptr<CircularBuffer<std::vector<float>>> depth_image_buffer = nullptr;
 };
 
 class Articulation

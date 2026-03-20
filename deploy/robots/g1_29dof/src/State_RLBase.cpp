@@ -30,19 +30,105 @@ REGISTER_OBSERVATION(keyboard_velocity_commands)
     return cmd;
 }
 
+REGISTER_OBSERVATION(generated_commands)
+{
+    std::vector<float> obs(3);
+    auto & joystick = env->robot->data.joystick;
+
+    const auto cfg = env->cfg["commands"]["base_velocity"]["ranges"];
+
+    obs[0] = std::clamp(joystick->ly(), cfg["lin_vel_x"][0].as<float>(), cfg["lin_vel_x"][1].as<float>());
+    obs[1] = std::clamp(-joystick->lx(), cfg["lin_vel_y"][0].as<float>(), cfg["lin_vel_y"][1].as<float>());
+    obs[2] = std::clamp(-joystick->rx(), cfg["ang_vel_z"][0].as<float>(), cfg["ang_vel_z"][1].as<float>());
+
+    return obs;
+}
+
+std::vector<int> linspace(int start, int stop, size_t num) {
+    std::vector<int> result;
+    if (num == 0) return result;
+    if (num == 1) {
+        result.push_back(start);
+        return result;
+    }
+
+    result.reserve(num);
+
+    double step = static_cast<double>(stop - start) / static_cast<double>(num - 1);
+    for (size_t i = 0; i < num; ++i) {
+        result.push_back(static_cast<int>(std::round(start + step * static_cast<double>(i))));
+    }
+
+    return result;
+}
+
+
+REGISTER_OBSERVATION(depth_image)
+{
+    auto & robot = env->robot;
+    auto & asset = env->robot;
+
+    int history_skip_frames = params["history_skip_frames"].as<int>();
+    int num_output_frames = params["num_output_frames"].as<int>();
+
+    printf("his: %d, n: %d\n", history_skip_frames, num_output_frames);
+
+    int downsample_factor = history_skip_frames;
+
+    int rs_frequency = 30;
+    int distance_to_image_plane_noised = 37;
+
+    int frames = int((distance_to_image_plane_noised - 1) / downsample_factor + 1);
+
+    int sim_frequency = int(1 / 0.02);
+    printf("sim_frequency: %d\n", sim_frequency);
+    // int real_downsample_factor = int((rs_frequency / sim_frequency) * downsample_factor);
+    int real_downsample_factor = 3;
+
+    printf("real_downsample_factor: %d, %d\n", real_downsample_factor, frames);
+
+    std::vector<int> depth_obs_indices = linspace(-1 - real_downsample_factor * (frames - 1), -1, frames);
+
+    // int history = 8;
+
+    // int width = 32;
+    // int height = 18;
+
+    for (int i = i; i < depth_obs_indices.size(); ++i) {
+        printf("indices: %d \n", depth_obs_indices[i]);
+    }
+
+    std::vector<std::vector<float>> depth_image = asset->data.depth_image_buffer->buffer_index(depth_obs_indices);
+
+    std::vector<float> depth_obs;
+    for (int i = 0; i < depth_image.size(); ++i) {
+        for (int j = 0; j < depth_image[i].size(); ++i) {
+            depth_obs.push_back(depth_image[i][j]);
+        }
+    }
+
+    return depth_obs;
+}
+
 }
 
 State_RLBase::State_RLBase(int state_mode, std::string state_string)
-: FSMState(state_mode, state_string) 
+: FSMState(state_mode, state_string)
 {
     auto cfg = param::config["FSM"][state_string];
     auto policy_dir = param::parser_policy_dir(cfg["policy_dir"].as<std::string>());
 
     env = std::make_unique<isaaclab::ManagerBasedRLEnv>(
         YAML::LoadFile(policy_dir / "params" / "deploy.yaml"),
-        std::make_shared<unitree::BaseArticulation<LowState_t::SharedPtr>>(FSMState::lowstate)
+        std::make_shared<unitree::CameraArticulation<LowState_t::SharedPtr, CameraData_t::SharedPtr, TorsoImu_t::SharedPtr>>(FSMState::lowstate, FSMState::cameradata, FSMState::torsoimu)
     );
-    env->alg = std::make_unique<isaaclab::OrtRunner>(policy_dir / "exported" / "policy.onnx");
+
+    env->alg = std::make_unique<isaaclab::OrtRunner>(policy_dir / "exported" / "actor.onnx");
+
+    env->encoder = std::make_unique<isaaclab::EncoderRunner>(policy_dir / "exported" / "0-depth_encoder.onnx");
+    env->encoder->width = 32;
+    env->encoder->height = 18;
+    env->encoder->history = 8;
 
     this->registered_checks.emplace_back(
         std::make_pair(

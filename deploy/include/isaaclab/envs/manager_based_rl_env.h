@@ -56,25 +56,89 @@ public:
         observation_manager->reset();
     }
 
+    std::vector<float> encode(std::unordered_map<std::string, std::vector<float>> obs)
+    {
+        // input image from obs
+        std::vector<float> input = obs["obs"];
+
+        // Update encoder_dim if not initialized or encoder changed
+        if (encoder_dim == 0 && encoder) {
+            encoder_dim = encoder->width * encoder->height * encoder->history;
+        }
+
+        int offset = input.size() - encoder_dim;
+
+        if (offset <= 0) {
+            printf("error: %ld, %d ,%d\n", input.size(), encoder_dim, offset);
+            return std::vector<float>();
+        }
+
+        // Resize depth_input_cache if needed
+        if (depth_input_cache.size() != encoder_dim) {
+            depth_input_cache.resize(encoder_dim);
+        }
+
+        // Copy depth data to cache
+        for (int i = 0; i < encoder_dim; ++i) {
+            depth_input_cache[i] = input[offset + i];
+        }
+
+        // Update image_obs_cache
+        image_obs_cache["obs"] = input;
+
+        std::vector<float> output = encoder->act(image_obs_cache);
+
+        // Resize new_input_cache if needed
+        size_t new_size = offset + output.size();
+        if (new_input_cache.size() != new_size) {
+            new_input_cache.resize(new_size);
+        }
+
+        // Copy non-depth data
+        for (int i = 0; i < offset; ++i) {
+            new_input_cache[i] = input[i];
+        }
+
+        // Copy encoder output
+        for (int i = 0; i < output.size(); ++i) {
+            new_input_cache[offset + i] = output[i];
+        }
+
+        return new_input_cache;
+    }
+
     void step()
     {
         episode_length += 1;
         robot->update();
         auto obs = observation_manager->compute();
+
+        if (encoder) {
+            auto new_input = encode(obs);
+            obs["obs"] = new_input;
+        }
+
         auto action = alg->act(obs);
         action_manager->process_action(action);
     }
 
     float step_dt;
-    
+
     YAML::Node cfg;
 
     std::unique_ptr<ObservationManager> observation_manager;
     std::unique_ptr<ActionManager> action_manager;
     std::shared_ptr<Articulation> robot;
     std::unique_ptr<Algorithms> alg;
+    std::unique_ptr<EncoderRunner> encoder;
     long episode_length = 0;
     float global_phase = 0.0f;
+
+    // Cached variables for encode function
+    int encoder_dim = 0;
+    std::vector<float> depth_input_cache;
+    std::unordered_map<std::string, std::vector<float>> image_obs_cache;
+    std::vector<float> new_input_cache;
 };
 
 };

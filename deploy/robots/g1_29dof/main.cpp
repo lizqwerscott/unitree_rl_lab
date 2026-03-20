@@ -6,6 +6,8 @@
 
 std::unique_ptr<LowCmd_t> FSMState::lowcmd = nullptr;
 std::shared_ptr<LowState_t> FSMState::lowstate = nullptr;
+std::shared_ptr<CameraData_t> FSMState::cameradata = nullptr;
+std::shared_ptr<TorsoImu_t> FSMState::torsoimu = nullptr;
 std::shared_ptr<Keyboard> FSMState::keyboard = std::make_shared<Keyboard>();
 
 void init_fsm_state()
@@ -20,6 +22,8 @@ void init_fsm_state()
     }
     FSMState::lowcmd = std::make_unique<LowCmd_t>();
     FSMState::lowstate = std::make_shared<LowState_t>();
+    FSMState::cameradata = std::make_shared<CameraData_t>();
+    FSMState::torsoimu = std::make_shared<TorsoImu_t>();
     spdlog::info("Waiting for connection to robot...");
     FSMState::lowstate->wait_for_connection();
     spdlog::info("Connected to robot.");
@@ -43,7 +47,7 @@ int main(int argc, char** argv)
         spdlog::critical("Unmatched robot type.");
         exit(-1);
     }
-    
+
     // Initialize FSM
     auto fsm = std::make_unique<CtrlFSM>(param::config["FSM"]);
     fsm->start();
@@ -55,7 +59,6 @@ int main(int argc, char** argv)
     {
         sleep(1);
     }
-    
+
     return 0;
 }
-

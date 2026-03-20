@@ -20,7 +20,7 @@ public:
         std::lock_guard<std::mutex> lock(act_mtx_);
         return action;
     }
-    
+
     std::vector<float> action;
 protected:
     std::mutex act_mtx_;
@@ -65,18 +65,21 @@ public:
     {
         auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
 
-        // make sure all input names are in obs
-        for (const auto& name : input_names) {
-            if (obs.find(name) == obs.end()) {
-                throw std::runtime_error("Input name " + std::string(name) + " not found in observations.");
-            }
-        }
+        // // make sure all input names are in obs
+        // for (const auto& name : input_names) {
+        //     if (obs.find(name) == obs.end()) {
+        //         throw std::runtime_error("Input name " + std::string(name) + " not found in observations.");
+        //     }
+        // }
 
         // Create input tensors
         std::vector<Ort::Value> input_tensors;
         for(int i(0); i<input_names.size(); ++i)
         {
-            const std::string name_str(input_names[i]);
+            std::string name_str(input_names[i]);
+            if (name_str == "input") {
+                name_str = "obs";
+            }
             auto& input_data = obs.at(name_str);
             auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_sizes[i], input_shapes[i].data(), input_shapes[i].size());
             input_tensors.push_back(std::move(input_tensor));
@@ -104,5 +107,19 @@ private:
     std::vector<std::vector<int64_t>> input_shapes;
     std::vector<int64_t> input_sizes;
     std::vector<int64_t> output_shape;
+};
+
+class EncoderRunner : public OrtRunner
+{
+public:
+    EncoderRunner(std::string model_path): OrtRunner(model_path)
+    {
+    }
+
+public:
+    int width;
+    int height;
+
+    int history;
 };
 };

@@ -9,8 +9,8 @@
 class FSMState : public BaseState
 {
 public:
-    FSMState(int state, std::string state_string) 
-    : BaseState(state, state_string) 
+    FSMState(int state, std::string state_string)
+    : BaseState(state, state_string)
     {
         spdlog::info("Initializing State_{} ...", state_string);
 
@@ -66,5 +66,7 @@ public:
 
     static std::unique_ptr<LowCmd_t> lowcmd;
     static std::shared_ptr<LowState_t> lowstate;
+    static std::shared_ptr<CameraData_t> cameradata;
+    static std::shared_ptr<TorsoImu_t> torsoimu;
     static std::shared_ptr<Keyboard> keyboard;
 };
