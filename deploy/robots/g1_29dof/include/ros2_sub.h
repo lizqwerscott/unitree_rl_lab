@@ -22,7 +22,7 @@ class CameraData : public SubscriptionBase<sensor_msgs::msg::dds_::PointCloud2_>
 public:
     using SharedPtr = std::shared_ptr<CameraData>;
 
-    CameraData(std::string topic = "rt/camera/depth") : SubscriptionBase<MsgType>(topic) {}
+    CameraData(std::string topic = "rt/camera/processed_depth_cloud") : SubscriptionBase<MsgType>(topic) {}
 
 };
 

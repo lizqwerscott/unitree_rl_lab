@@ -84,7 +84,7 @@ public:
         }
 
         // Update image_obs_cache
-        image_obs_cache["obs"] = input;
+        image_obs_cache["obs"] = depth_input_cache;
 
         std::vector<float> output = encoder->act(image_obs_cache);
 

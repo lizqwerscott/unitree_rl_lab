@@ -71,8 +71,6 @@ REGISTER_OBSERVATION(depth_image)
     int history_skip_frames = params["history_skip_frames"].as<int>();
     int num_output_frames = params["num_output_frames"].as<int>();
 
-    printf("his: %d, n: %d\n", history_skip_frames, num_output_frames);
-
     int downsample_factor = history_skip_frames;
 
     int rs_frequency = 30;
@@ -81,30 +79,30 @@ REGISTER_OBSERVATION(depth_image)
     int frames = int((distance_to_image_plane_noised - 1) / downsample_factor + 1);
 
     int sim_frequency = int(1 / 0.02);
-    printf("sim_frequency: %d\n", sim_frequency);
-    // int real_downsample_factor = int((rs_frequency / sim_frequency) * downsample_factor);
     int real_downsample_factor = 3;
 
-    printf("real_downsample_factor: %d, %d\n", real_downsample_factor, frames);
-
-    std::vector<int> depth_obs_indices = linspace(-1 - real_downsample_factor * (frames - 1), -1, frames);
-
-    // int history = 8;
-
-    // int width = 32;
-    // int height = 18;
-
-    for (int i = i; i < depth_obs_indices.size(); ++i) {
-        printf("indices: %d \n", depth_obs_indices[i]);
-    }
-
-    std::vector<std::vector<float>> depth_image = asset->data.depth_image_buffer->buffer_index(depth_obs_indices);
+    int start_idx = -1 - real_downsample_factor * (frames - 1);
+    std::vector<int> depth_obs_indices = linspace(start_idx, -1, frames);
 
     std::vector<float> depth_obs;
-    for (int i = 0; i < depth_image.size(); ++i) {
-        for (int j = 0; j < depth_image[i].size(); ++i) {
-            depth_obs.push_back(depth_image[i][j]);
+
+    if (asset->data.depth_image_buffer != nullptr) {
+        try {
+            std::vector<std::vector<float>> depth_image = asset->data.depth_image_buffer->buffer_index(depth_obs_indices);
+            for (int i = 0; i < depth_image.size(); ++i) {
+                for (int j = 0; j < depth_image[i].size(); ++j) {
+                    depth_obs.push_back(depth_image[i][j]);
+                }
+            }
+        } catch (const std::out_of_range &e) {
+            printf("Error accessing depth image buffer: %s\n", e.what());
         }
+    }
+
+    // depth_obs should be of size num_output_frames * width * height, if not, pad with zeros
+    int expected_size = 32 * 18 * 8;
+    if (depth_obs.size() < expected_size) {
+        depth_obs.resize(expected_size, 0.0f);
     }
 
     return depth_obs;
@@ -140,8 +138,39 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
 
 void State_RLBase::run()
 {
+    std::vector<float> joint_signs = {
+            1,
+            1,
+            -1,
+            1,
+            1,
+            -1,
+            1,
+            1,
+            -1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+        };
     auto action = env->action_manager->processed_actions();
     for(int i(0); i < env->robot->data.joint_ids_map.size(); i++) {
-        lowcmd->msg_.motor_cmd()[env->robot->data.joint_ids_map[i]].q() = action[i];
+        lowcmd->msg_.motor_cmd()[env->robot->data.joint_ids_map[i]].q() = action[i] * joint_signs[i];
     }
 }

@@ -67,12 +67,17 @@ public:
         return _buffer;
     }
 
-    std::vector<T> buffer_index(std::vector<int> index) const
+    std::vector<T> buffer_index(std::vector<int> &indexs) const
     {
-        std::vector<T> result(index.size());
+        std::vector<T> result(indexs.size());
 
-        for (int i = 0; i < index.size(); ++i) {
-            result.push_back(_buffer[_buffer.size() + index[i]]);
+        for (int i = 0; i < indexs.size(); ++i) {
+			int index = _buffer.size() + indexs[i];
+			if (index < 0 || index >= _buffer.size()) {
+				printf("Error: %d index, %ld\n", index, _buffer.size());
+                throw std::out_of_range("Index out of range in buffer_index");
+			}
+            result.push_back(_buffer[index]);
         }
 
         return result;

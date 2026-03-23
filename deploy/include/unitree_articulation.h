@@ -69,18 +69,51 @@ public:
             torsoimu->msg_.quaternion()[3]
         );
         data.projected_gravity_b = data.root_quat_w.conjugate() * data.GRAVITY_VEC_W;
+
         // joint positions and velocities
+        std::vector<float> joint_signs = {
+            1,
+            1,
+            -1,
+            1,
+            1,
+            -1,
+            1,
+            1,
+            -1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+        };
+
         for(int i(0); i< data.joint_ids_map.size(); i++) {
-            data.joint_pos[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].q();
-            data.joint_vel[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].dq();
+            data.joint_pos[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].q() * joint_signs[i];
+            data.joint_vel[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].dq() * joint_signs[i];
         }
 
-        std::vector<float> image;
-        for (int i = 0; i < cameradata->msg_.width() * cameradata->msg_.height(); ++i) {
-            image.push_back(cameradata->msg_.data()[i]);
-        }
-        data.depth_image_buffer->append(image);
+		image_data_buffer_.resize(cameradata->msg_.width() * cameradata->msg_.height());
+		std::memcpy(image_data_buffer_.data(), cameradata->msg_.data().data(), cameradata->msg_.width() * cameradata->msg_.height() * sizeof(float));
+        data.depth_image_buffer->append(image_data_buffer_);
     }
+
+	std::vector<float> image_data_buffer_;
 
     LowStatePtr lowstate;
     CameraDataPtr cameradata;
