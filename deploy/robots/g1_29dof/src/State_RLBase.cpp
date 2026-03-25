@@ -101,7 +101,8 @@ REGISTER_OBSERVATION(depth_image)
 
     // depth_obs should be of size num_output_frames * width * height, if not, pad with zeros
     int expected_size = 32 * 18 * 8;
-    if (depth_obs.size() < expected_size) {
+    if (depth_obs.size() < expected_size || depth_obs.size() > expected_size) {
+        printf("Warning: depth_obs size is %lu, expected %d. Padding with zeros.\n", depth_obs.size(), expected_size);
         depth_obs.resize(expected_size, 0.0f);
     }
 
