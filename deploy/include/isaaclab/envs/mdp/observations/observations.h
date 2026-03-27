@@ -115,9 +115,58 @@ REGISTER_OBSERVATION(velocity_commands)
 
     const auto cfg = env->cfg["commands"]["base_velocity"]["ranges"];
 
-    obs[0] = std::clamp(joystick->ly(), cfg["lin_vel_x"][0].as<float>(), cfg["lin_vel_x"][1].as<float>());
-    obs[1] = std::clamp(-joystick->lx(), cfg["lin_vel_y"][0].as<float>(), cfg["lin_vel_y"][1].as<float>());
-    obs[2] = std::clamp(-joystick->rx(), cfg["ang_vel_z"][0].as<float>(), cfg["ang_vel_z"][1].as<float>());
+    float deadband = 0.5;
+    float ang_vel_deadband = 0.5;
+    
+    float lin_vel_x_min = cfg["lin_vel_x"][0].as<float>();
+    float lin_vel_x_max = cfg["lin_vel_x"][1].as<float>();
+
+    float lin_vel_y_min = cfg["lin_vel_y"][0].as<float>();
+    float lin_vel_y_max = cfg["lin_vel_y"][1].as<float>();
+
+    float ang_vel_z_min = cfg["ang_vel_z"][0].as<float>();
+    float ang_vel_z_max = cfg["ang_vel_z"][1].as<float>();
+
+    float vx = 0;
+    float vy = 0;
+    float yaw = 0;
+
+    float ly = joystick->ly();
+    if (ly > deadband) {
+        vx = (ly - deadband) / (1 - deadband);
+        vx = vx * (lin_vel_x_max - lin_vel_x_min) + lin_vel_x_min;
+    } else if (ly < - deadband) {
+        vx = (ly + deadband) / (1 - deadband);
+        vx = vx * (lin_vel_x_max - lin_vel_x_min) - lin_vel_x_min;
+    } else {
+        vx = 0;
+    }
+
+    float lx = joystick->lx();
+    if (lx > deadband) {
+        vy = (lx - deadband) / (1 - deadband);
+        vy = vy * (lin_vel_y_max - lin_vel_y_min) + lin_vel_y_min;
+    } else if (lx < - deadband) {
+        vy = (lx + deadband) / (1 - deadband);
+        vy = vy * (lin_vel_y_max - lin_vel_y_min) - lin_vel_y_min;
+    } else {
+        vy = 0;
+    }
+
+    float rx = -joystick->rx();
+    if (rx > ang_vel_deadband) {
+        yaw = (rx - ang_vel_deadband) / (1 - ang_vel_deadband);
+        yaw = yaw * (ang_vel_z_max - ang_vel_z_min) + ang_vel_z_min;
+    } else if (rx < - ang_vel_deadband) {
+        yaw = (rx + ang_vel_deadband) / (1 - ang_vel_deadband);
+        yaw = yaw * (ang_vel_z_max - ang_vel_z_min) - ang_vel_z_min;
+    } else {
+        yaw = 0;
+    }
+
+    obs[0] = vx;
+    obs[1] = vy;
+    obs[2] = yaw;
 
     return obs;
 }
