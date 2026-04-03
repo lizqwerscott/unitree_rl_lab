@@ -43,6 +43,16 @@ REGISTER_OBSERVATION(generated_commands)
 
     return obs;
 }
+REGISTER_OBSERVATION(gait_cmd)
+{
+    std::vector<float> obs(3);
+    // auto & joystick = env->robot->data.joystick;
+    obs[0] = 1.0;
+    obs[1] = 0.0;
+    obs[2] = 0.0;
+
+    return obs;
+}
 
 std::vector<int> linspace(int start, int stop, size_t num) {
     std::vector<int> result;
@@ -68,23 +78,18 @@ REGISTER_OBSERVATION(depth_image)
     auto & robot = env->robot;
     auto & asset = env->robot;
 
-    int history_skip_frames = params["history_skip_frames"].as<int>();
-    int num_output_frames = params["num_output_frames"].as<int>();
-
-    int downsample_factor = history_skip_frames;
-
-    int rs_frequency = 30;
-    int distance_to_image_plane_noised = 37;
-
-    int frames = int((distance_to_image_plane_noised - 1) / downsample_factor + 1);
-
-    int sim_frequency = int(1 / 0.02);
-    int real_downsample_factor = 3;
-
-    int start_idx = -1 - real_downsample_factor * (frames - 1);
-    std::vector<int> depth_obs_indices = linspace(start_idx, -1, frames);
+    int width = params["image"]["width"].as<int>();
+    int height = params["image"]["height"].as<int>();
+    int input_length = params["input_length"].as<int>();
+    int history_length = params["history_length"].as<int>();
 
     std::vector<float> depth_obs;
+
+    std::vector<int> depth_obs_indices;
+
+    for (int i = 0; i < input_length; ++i) {
+        depth_obs_indices.push_back(-(history_length - input_length + i));
+    }
 
     if (asset->data.depth_image_buffer != nullptr) {
         try {
@@ -100,7 +105,7 @@ REGISTER_OBSERVATION(depth_image)
     }
 
     // depth_obs should be of size num_output_frames * width * height, if not, pad with zeros
-    int expected_size = 32 * 18 * 8;
+    int expected_size = input_length * width * height;
     if (depth_obs.size() < expected_size || depth_obs.size() > expected_size) {
         printf("Warning: depth_obs size is %lu, expected %d. Padding with zeros.\n", depth_obs.size(), expected_size);
         depth_obs.resize(expected_size, 0.0f);
@@ -124,11 +129,6 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
 
     env->alg = std::make_unique<isaaclab::OrtRunner>(policy_dir / "exported" / "actor.onnx");
 
-    env->encoder = std::make_unique<isaaclab::EncoderRunner>(policy_dir / "exported" / "0-depth_encoder.onnx");
-    env->encoder->width = 32;
-    env->encoder->height = 18;
-    env->encoder->history = 8;
-
     this->registered_checks.emplace_back(
         std::make_pair(
             [&]()->bool{ return isaaclab::mdp::bad_orientation(env.get(), 1.0); },
@@ -139,39 +139,19 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
 
 void State_RLBase::run()
 {
-    std::vector<float> joint_signs = {
-            1,
-            1,
-            -1,
-            1,
-            1,
-            -1,
-            1,
-            1,
-            -1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-        };
+    std::vector<int> joint_ids_map= {
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, -1, -1, -1, 12, -1, -1, 13, -1,
+        -1, -1, 14, -1, -1, 15, -1, -1, -1
+
+    };
     auto action = env->action_manager->processed_actions();
-    for(int i(0); i < env->robot->data.joint_ids_map.size(); i++) {
-        lowcmd->msg_.motor_cmd()[env->robot->data.joint_ids_map[i]].q() = action[i] * joint_signs[i];
+    for(int i(0); i < 29; i++) {
+        int joint_id = joint_ids_map[i];
+        float action_q = 0.0f;
+        if (joint_id != -1) {
+            action_q = action[joint_id];
+        }
+        lowcmd->msg_.motor_cmd()[i].q() = action_q;
     }
+
 }
