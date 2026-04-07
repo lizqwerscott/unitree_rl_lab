@@ -38,8 +38,11 @@ int main(int argc, char** argv)
     std::cout << "     G1-29dof Controller \n";
 
     // Unitree DDS Config
-    unitree::robot::ChannelFactory::Instance()->Init(0, vm["network"].as<std::string>());
+    int id = vm["domain_id"].as<int>();
+    std::string network = vm["network"].as<std::string>();
 
+    unitree::robot::ChannelFactory::Instance()->Init(vm["domain_id"].as<int>(), vm["network"].as<std::string>());
+    
     init_fsm_state();
 
     FSMState::lowcmd->msg_.mode_machine() = 5; // 29dof
