@@ -11,9 +11,21 @@ class State_RLBase : public FSMState
 {
 public:
     State_RLBase(int state_mode, std::string state_string);
-    
+
     void enter()
     {
+        for (int i = 0; i < 29; ++i) {
+            lowcmd->msg_.motor_cmd()[i].kp() = 100;
+            lowcmd->msg_.motor_cmd()[i].kd() = 10;
+            lowcmd->msg_.motor_cmd()[i].dq() = 0;
+            lowcmd->msg_.motor_cmd()[i].tau() = 0;
+
+            if (i == 12 || i == 13 || i == 14) {
+                lowcmd->msg_.motor_cmd()[i].kp() = 800;
+                lowcmd->msg_.motor_cmd()[i].kd() = 10;
+            }
+        }
+
         // set gain
         for (int i = 0; i < env->robot->data.joint_stiffness.size(); ++i)
         {
@@ -47,7 +59,7 @@ public:
     }
 
     void run();
-    
+
     void exit()
     {
         policy_thread_running = false;
