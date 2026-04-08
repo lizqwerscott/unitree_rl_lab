@@ -91,11 +91,6 @@ public:
 
         std::vector<float> inputs = obs["obs"];
 
-        // // test with all zeros input
-        // for (int i = ; i < inputs.size(); ++i) {
-        //     inputs[i] = 0;
-        // }
-
         std::unordered_map<std::string, std::vector<float>> split_obs;
 
         int current_input_idx = 0;
