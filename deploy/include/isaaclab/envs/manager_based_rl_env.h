@@ -103,7 +103,7 @@ public:
         std::vector<float> obs_current;
 
         for (int i = 0; i < 3; ++i) {
-            obs_current.push_back(current_input_idx);
+            obs_current.push_back(inputs[current_input_idx]);
             current_input_idx++;
         }
         // Extract history observations
