@@ -9,6 +9,7 @@ std::shared_ptr<LowState_t> FSMState::lowstate = nullptr;
 std::shared_ptr<CameraData_t> FSMState::cameradata = nullptr;
 std::shared_ptr<TorsoImu_t> FSMState::torsoimu = nullptr;
 std::shared_ptr<Keyboard> FSMState::keyboard = std::make_shared<Keyboard>();
+std::shared_ptr<Nav_Cmd_t> FSMState::navcmd = nullptr;
 
 void init_fsm_state()
 {
@@ -24,6 +25,7 @@ void init_fsm_state()
     FSMState::lowstate = std::make_shared<LowState_t>();
     FSMState::cameradata = std::make_shared<CameraData_t>();
     FSMState::torsoimu = std::make_shared<TorsoImu_t>();
+    FSMState::navcmd = std::make_shared<Nav_Cmd_t>();
     spdlog::info("Waiting for connection to robot...");
     FSMState::lowstate->wait_for_connection();
     spdlog::info("Connected to robot.");

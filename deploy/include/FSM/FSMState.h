@@ -68,5 +68,6 @@ public:
     static std::shared_ptr<LowState_t> lowstate;
     static std::shared_ptr<CameraData_t> cameradata;
     static std::shared_ptr<TorsoImu_t> torsoimu;
+    static std::shared_ptr<Nav_Cmd_t> navcmd;
     static std::shared_ptr<Keyboard> keyboard;
 };

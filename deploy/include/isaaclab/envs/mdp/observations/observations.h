@@ -112,6 +112,7 @@ REGISTER_OBSERVATION(velocity_commands)
 {
     std::vector<float> obs(3);
     auto & joystick = env->robot->data.joystick;
+    auto & nav_cmd = env->robot->data.nav_cmd;
 
     const auto cfg = env->cfg["commands"]["base_velocity"]["ranges"];
 
@@ -162,6 +163,18 @@ REGISTER_OBSERVATION(velocity_commands)
         yaw = yaw * (ang_vel_z_max - ang_vel_z_min) - ang_vel_z_min;
     } else {
         yaw = 0;
+    }
+
+    if(joystick->B()){
+        env->robot->data.nav_flag = true;
+    }
+    if(joystick->A()){
+        env->robot->data.nav_flag = false;
+    }   
+    if(env->robot->data.nav_flag) {
+        vx = nav_cmd[0];
+        vy = nav_cmd[1];
+        yaw = nav_cmd[2];
     }
 
     obs[0] = vx;

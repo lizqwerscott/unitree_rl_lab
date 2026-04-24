@@ -43,12 +43,12 @@ public:
     LowStatePtr lowstate;
 };
 
-template <typename LowStatePtr, typename CameraDataPtr, typename TorsoImuPtr>
+template <typename LowStatePtr, typename CameraDataPtr, typename TorsoImuPtr, typename NavCmdPtr>
 class CameraArticulation : public isaaclab::Articulation
 {
 public:
-    CameraArticulation(LowStatePtr lowstate_, CameraDataPtr cameradata_ = nullptr, TorsoImuPtr torsoimu_ = nullptr)
-    : lowstate(lowstate_), cameradata(cameradata_), torsoimu(torsoimu_)
+    CameraArticulation(LowStatePtr lowstate_, CameraDataPtr cameradata_ = nullptr, TorsoImuPtr torsoimu_ = nullptr, NavCmdPtr navcmd_ = nullptr)
+    : lowstate(lowstate_), cameradata(cameradata_), torsoimu(torsoimu_), navcmd(navcmd_)
     {
         data.joystick = &lowstate->joystick;
         data.depth_image_buffer = std::make_unique<CircularBuffer<std::vector<float>>>(30);
@@ -111,6 +111,12 @@ public:
 		image_data_buffer_.resize(cameradata->msg_.width() * cameradata->msg_.height());
 		std::memcpy(image_data_buffer_.data(), cameradata->msg_.data().data(), cameradata->msg_.width() * cameradata->msg_.height() * sizeof(float));
         data.depth_image_buffer->append(image_data_buffer_);
+
+        // nav cmd
+        data.nav_cmd[0] = navcmd->msg_.linear().x();
+        data.nav_cmd[1] = navcmd->msg_.linear().y();
+        data.nav_cmd[2] = navcmd->msg_.angular().z();
+
     }
 
 	std::vector<float> image_data_buffer_;
@@ -118,6 +124,7 @@ public:
     LowStatePtr lowstate;
     CameraDataPtr cameradata;
     TorsoImuPtr torsoimu;
+    NavCmdPtr navcmd;
 };
 
 }
