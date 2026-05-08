@@ -33,7 +33,43 @@ public:
     {
         // Init Model
         env = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "onnx_model");
-        session_options.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
+
+        auto available_providers = Ort::GetAvailableProviders();
+        std::cout << "Available Providers: ";
+        bool cuda_available = false;
+        bool tensorrt_available = false;
+        for (const auto& provider : available_providers) {
+            std::cout << provider << " ";
+            if (provider == "CUDAExecutionProvider") {
+                cuda_available = true;
+            }
+            if (provider == "TensorrtExecutionProvider") {
+                tensorrt_available = true;
+            }
+        }
+        std::cout << std::endl;
+
+        // TensorRT
+        if (tensorrt_available) {
+            // printf("Using TensorRT Execution Provider.\n");
+            // OrtTensorRTProviderOptions trt_options{};
+            // trt_options.device_id = 0;
+            // trt_options.has_user_compute_stream = 0;
+            // trt_options.user_compute_stream = nullptr;
+
+            // session_options.AppendExecutionProvider_TensorRT(trt_options);
+            // session_options.AppendExecutionProvider_TensorRT_V2(trt_options);
+        }
+        
+        // CUDA
+        if (cuda_available) {
+            printf("Using CUDA Execution Provider.\n");
+            OrtCUDAProviderOptions cuda_options{};
+            cuda_options.device_id = 0;
+            session_options.AppendExecutionProvider_CUDA(cuda_options);
+        
+            session_options.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
+        }
 
         session = std::make_unique<Ort::Session>(env, model_path.c_str(), session_options);
 
