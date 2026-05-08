@@ -37,13 +37,23 @@ include_directories(
 link_libraries(
   unitree_sdk2 ddsc ddscxx rt pthread # dds
   libboost_program_options.a libyaml-cpp.a fmt
-  # ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime.so.1.22.0
-  ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime.so.1.16.0
-  ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime_providers_cuda.so
-  ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime_providers_cuda_ut.so
-  ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime_providers_shared.so
-  ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime_providers_tensorrt.so
 )
+
+if(ARCH MATCHES "x86_64|amd64")
+  link_libraries(
+    ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime.so.1.22.0
+  )
+elseif(ARCH MATCHES "aarch64|arm64")
+  link_libraries(
+    ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime.so.1.16.0
+    ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime_providers_cuda.so
+    ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime_providers_cuda_ut.so
+    ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime_providers_shared.so
+    ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime_providers_tensorrt.so
+  )
+else()
+    message(FATAL_ERROR "Unsupported architecture for ONNX Runtime: ${ARCH}")
+endif()
 
 file(GLOB_RECURSE ADD_SRC_LIST
   ${PROJECT_SOURCE_DIR}/src/*.cpp
