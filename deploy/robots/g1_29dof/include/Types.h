@@ -9,3 +9,4 @@ using LowCmd_t = unitree::robot::g1::publisher::LowCmd;
 using LowState_t = unitree::robot::g1::subscription::LowState;
 using CameraData_t = unitree::robot::g1::subscription::CameraData;
 using TorsoImu_t = unitree::robot::g1::subscription::TorsoImu;
+using Nav_Cmd_t = unitree::robot::g1::subscription::NavCmd;

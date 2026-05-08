@@ -42,6 +42,10 @@ struct ArticulationData
 
     unitree::common::UnitreeJoystick* joystick = nullptr;
 
+    Eigen::Vector3f nav_cmd;
+
+    bool nav_flag = false;
+
     std::unique_ptr<CircularBuffer<std::vector<float>>> depth_image_buffer = nullptr;
 };
 

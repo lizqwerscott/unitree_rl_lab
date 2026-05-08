@@ -7,6 +7,7 @@
 
 #include "unitree/idl/ros2/PointCloud2_.hpp"
 #include "unitree/idl/hg/IMUState_.hpp"
+#include "unitree/idl/ros2/Twist_.hpp"
 
 namespace unitree
 {
@@ -32,6 +33,14 @@ public:
     using SharedPtr = std::shared_ptr<TorsoImu>;
 
     TorsoImu(std::string topic = "rt/secondary_imu") : SubscriptionBase<MsgType>(topic) {}
+};
+
+class NavCmd : public SubscriptionBase<geometry_msgs::msg::dds_::Twist_>
+{
+public: 
+    using SharedPtr = std::shared_ptr<NavCmd>;
+
+    NavCmd(std::string topic = "rt/nav_cmd") : SubscriptionBase<MsgType>(topic) {}
 };
 
 } // namespace subscription
