@@ -61,6 +61,9 @@ private:
 
     std::thread policy_thread;
     bool policy_thread_running = false;
+
+    int warmup_steps = 0;
+    int warmup_steps_max = 0;
 };
 
 REGISTER_FSM(State_RLBase)

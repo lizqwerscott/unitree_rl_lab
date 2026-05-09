@@ -129,6 +129,10 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
     env->encoder->height = 18;
     env->encoder->history = 8;
 
+    // 5s, dt is 0.001
+    warmup_steps_max = 5 / 0.001;
+    warmup_steps = warmup_steps_max;
+
     this->registered_checks.emplace_back(
         std::make_pair(
             [&]()->bool{ return isaaclab::mdp::bad_orientation(env.get(), 1.0); },
@@ -139,6 +143,10 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
 
 void State_RLBase::run()
 {
+    if (warmup_steps > 0) {
+        warmup_steps--;
+        return;
+    }
     std::vector<float> joint_signs = {
             1,
             1,
