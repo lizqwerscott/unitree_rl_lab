@@ -67,9 +67,9 @@ public:
             OrtCUDAProviderOptions cuda_options{};
             cuda_options.device_id = 0;
             session_options.AppendExecutionProvider_CUDA(cuda_options);
-        
-            session_options.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
         }
+        
+        session_options.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
 
         session = std::make_unique<Ort::Session>(env, model_path.c_str(), session_options);
 
