@@ -45,6 +45,7 @@ if(ARCH MATCHES "x86_64|amd64")
   )
 elseif(ARCH MATCHES "aarch64|arm64")
   link_libraries(
+    # ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime.so.1.22.0
     ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime.so.1.16.0
     ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime_providers_cuda.so
     ${THIRDPARTY_DIR}/${ONNXRUNTIME_ARCH_DIR}/lib/libonnxruntime_providers_cuda_ut.so
