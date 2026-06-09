@@ -47,6 +47,8 @@ struct ArticulationData
     bool nav_flag = false;
 
     std::unique_ptr<CircularBuffer<std::vector<float>>> depth_image_buffer = nullptr;
+
+    std::vector<float> height_scan_buffer;
 };
 
 class Articulation

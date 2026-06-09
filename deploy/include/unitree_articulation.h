@@ -108,9 +108,13 @@ public:
             data.joint_vel[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].dq() * joint_signs[i];
         }
 
-		image_data_buffer_.resize(cameradata->msg_.width() * cameradata->msg_.height());
-		std::memcpy(image_data_buffer_.data(), cameradata->msg_.data().data(), cameradata->msg_.width() * cameradata->msg_.height() * sizeof(float));
-        data.depth_image_buffer->append(image_data_buffer_);
+		// image_data_buffer_.resize(cameradata->msg_.width() * cameradata->msg_.height());
+		// std::memcpy(image_data_buffer_.data(), cameradata->msg_.data().data(), cameradata->msg_.width() * cameradata->msg_.height() * sizeof(float));
+        // data.depth_image_buffer->append(image_data_buffer_);
+
+        height_scan_buffer_.resize(cameradata->msg_.width() * cameradata->msg_.height());
+		std::memcpy(height_scan_buffer_.data(), cameradata->msg_.data().data(), cameradata->msg_.width() * cameradata->msg_.height() * sizeof(float));
+        data.height_scan_buffer = height_scan_buffer_;
 
         // nav cmd
         data.nav_cmd[0] = navcmd->msg_.linear().x();
@@ -120,6 +124,7 @@ public:
     }
 
 	std::vector<float> image_data_buffer_;
+	std::vector<float> height_scan_buffer_;
 
     LowStatePtr lowstate;
     CameraDataPtr cameradata;

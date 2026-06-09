@@ -109,6 +109,22 @@ REGISTER_OBSERVATION(depth_image)
     return depth_obs;
 }
 
+REGISTER_OBSERVATION(height_scan)
+{
+    auto & robot = env->robot;
+    auto & asset = env->robot;
+
+    std::vector<float> height_scan_obs = asset->data.height_scan_buffer;
+
+    int expected_size = 33 * 21;
+    if (height_scan_obs.size() < expected_size || height_scan_obs.size() > expected_size) {
+        printf("Warning: height_scan_obs size is %lu, expected %d. Padding with zeros.\n", height_scan_obs.size(), expected_size);
+        height_scan_obs.resize(expected_size, 0.0f);
+    }
+
+    return height_scan_obs;
+}
+
 }
 
 State_RLBase::State_RLBase(int state_mode, std::string state_string)
@@ -125,9 +141,9 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
     env->alg = std::make_unique<isaaclab::OrtRunner>(policy_dir / "exported" / "actor.onnx");
 
     env->encoder = std::make_unique<isaaclab::EncoderRunner>(policy_dir / "exported" / "0-depth_encoder.onnx");
-    env->encoder->width = 32;
-    env->encoder->height = 18;
-    env->encoder->history = 8;
+    env->encoder->width = 33;
+    env->encoder->height = 21;
+    env->encoder->history = 4;
 
     // 5s, dt is 0.001
     warmup_steps_max = 5 / 0.001;
