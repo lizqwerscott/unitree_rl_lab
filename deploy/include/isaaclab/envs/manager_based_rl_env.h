@@ -54,6 +54,10 @@ public:
         robot->update();
         action_manager->reset();
         observation_manager->reset();
+        // Reset RNN hidden state if policy is RNN-based
+        if (alg) {
+            dynamic_cast<isaaclab::OrtRunner*>(alg.get())->reset_hidden_state();
+        }
     }
 
     std::vector<float> encode(std::unordered_map<std::string, std::vector<float>> obs)
