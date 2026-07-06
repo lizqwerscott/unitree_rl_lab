@@ -82,13 +82,23 @@ public:
             depth_input_cache.resize(encoder_dim);
         }
 
+        if (proprio_input_cache.size() != offset) {
+            proprio_input_cache.resize(offset);
+        }
+
         // Copy depth data to cache
         for (int i = 0; i < encoder_dim; ++i) {
             depth_input_cache[i] = input[offset + i];
         }
 
+        // Copy proprio input data
+        for (int i = 0; i < offset; ++i) {
+            proprio_input_cache[i] = input[i];
+        }
+
         // Update image_obs_cache
-        image_obs_cache["obs"] = depth_input_cache;
+        image_obs_cache["depth"] = depth_input_cache;
+        image_obs_cache["proprio"] = proprio_input_cache;
 
         std::vector<float> output = encoder->act(image_obs_cache);
 
@@ -141,6 +151,7 @@ public:
     // Cached variables for encode function
     int encoder_dim = 0;
     std::vector<float> depth_input_cache;
+    std::vector<float> proprio_input_cache;;
     std::unordered_map<std::string, std::vector<float>> image_obs_cache;
     std::vector<float> new_input_cache;
 };
