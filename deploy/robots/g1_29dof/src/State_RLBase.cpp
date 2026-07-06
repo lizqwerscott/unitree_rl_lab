@@ -109,20 +109,12 @@ REGISTER_OBSERVATION(depth_image)
     }
 
     // depth_obs should be of size num_output_frames * width * height, if not, pad with zeros
-    int expected_size = 32 * 18 * history_length;
+    int expected_size = 128 * 128 * history_length;
     if (depth_obs.size() < expected_size || depth_obs.size() > expected_size) {
         printf("Warning: depth_obs size is %lu, expected %d. Padding with zeros.\n", depth_obs.size(), expected_size);
         depth_obs.resize(expected_size, 0.0f);
     }
-
-	if (env->robot->data.depth_image_clear) {
-		printf("empty depth input:\n");
-        depth_obs.resize(expected_size, 0.0f);
-		for (int i = 0; i < expected_size; ++i) {
-			depth_obs[i] = 0.1f;
-		}
-	}
-
+    
     return depth_obs;
 }
 }
@@ -141,8 +133,8 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
     env->alg = std::make_unique<isaaclab::OrtRunner>(policy_dir / "exported" / "actor.onnx");
 
     env->encoder = std::make_unique<isaaclab::EncoderRunner>(policy_dir / "exported" / "0-depth_encoder.onnx");
-    env->encoder->width = 32;
-    env->encoder->height = 18;
+    env->encoder->width = 128;
+    env->encoder->height = 128;
     env->encoder->history = 1;
 
     // 5s, dt is 0.001
