@@ -71,6 +71,8 @@ REGISTER_OBSERVATION(depth_image)
     int history_skip_frames = params["history_skip_frames"].as<int>();
     int num_output_frames = params["num_output_frames"].as<int>();
 
+    int history_length = params["history_length"].as<int>();
+
     int downsample_factor = history_skip_frames;
 
     int rs_frequency = 30;
@@ -82,7 +84,14 @@ REGISTER_OBSERVATION(depth_image)
     int real_downsample_factor = 3;
 
     int start_idx = -1 - real_downsample_factor * (frames - 1);
-    std::vector<int> depth_obs_indices = linspace(start_idx, -1, frames);
+    std::vector<int> depth_obs_indices;
+    if (history_length == 1) {
+        // get last frame only
+        depth_obs_indices.push_back(-1);
+    } else {
+        depth_obs_indices = linspace(start_idx, -1, frames);
+    }
+
 
     std::vector<float> depth_obs;
 
@@ -100,7 +109,7 @@ REGISTER_OBSERVATION(depth_image)
     }
 
     // depth_obs should be of size num_output_frames * width * height, if not, pad with zeros
-    int expected_size = 32 * 18 * 8;
+    int expected_size = 32 * 18 * history_length;
     if (depth_obs.size() < expected_size || depth_obs.size() > expected_size) {
         printf("Warning: depth_obs size is %lu, expected %d. Padding with zeros.\n", depth_obs.size(), expected_size);
         depth_obs.resize(expected_size, 0.0f);
@@ -143,7 +152,7 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
     env->encoder = std::make_unique<isaaclab::EncoderRunner>(policy_dir / "exported" / "0-depth_encoder.onnx");
     env->encoder->width = 33;
     env->encoder->height = 21;
-    env->encoder->history = 4;
+    env->encoder->history = 1;
 
     // 5s, dt is 0.001
     warmup_steps_max = 5 / 0.001;
