@@ -149,7 +149,7 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
 
     env->alg = std::make_unique<isaaclab::OrtRunner>(policy_dir / "exported" / "actor.onnx");
 
-    env->encoder = std::make_unique<isaaclab::EncoderRunner>(policy_dir / "exported" / "0-depth_encoder.onnx");
+    env->encoder = std::make_unique<isaaclab::EncoderRunner>(policy_dir / "exported" / "0-height_scan_encoder.onnx");
     env->encoder->width = 33;
     env->encoder->height = 21;
     env->encoder->history = 1;
