@@ -60,7 +60,7 @@ public:
             // session_options.AppendExecutionProvider_TensorRT(trt_options);
             // session_options.AppendExecutionProvider_TensorRT_V2(trt_options);
         }
-        
+
         // CUDA
         if (cuda_available) {
             printf("Using CUDA Execution Provider.\n");
@@ -68,7 +68,7 @@ public:
             cuda_options.device_id = 0;
             session_options.AppendExecutionProvider_CUDA(cuda_options);
         }
-        
+
         session_options.SetGraphOptimizationLevel(ORT_ENABLE_EXTENDED);
 
         session = std::make_unique<Ort::Session>(env, model_path.c_str(), session_options);
@@ -143,19 +143,5 @@ private:
     std::vector<std::vector<int64_t>> input_shapes;
     std::vector<int64_t> input_sizes;
     std::vector<int64_t> output_shape;
-};
-
-class EncoderRunner : public OrtRunner
-{
-public:
-    EncoderRunner(std::string model_path): OrtRunner(model_path)
-    {
-    }
-
-public:
-    int width;
-    int height;
-
-    int history;
 };
 };

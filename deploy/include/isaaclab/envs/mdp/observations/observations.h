@@ -29,37 +29,6 @@ REGISTER_OBSERVATION(joint_pos)
     auto & asset = env->robot;
     std::vector<float> data;
 
-    std::vector<int> joint_ids;
-    try {
-        joint_ids = params["asset_cfg"]["joint_ids"].as<std::vector<int>>();
-    } catch(const std::exception& e) {
-    }
-
-    if(joint_ids.empty())
-    {
-        data.resize(asset->data.joint_pos.size());
-        for(size_t i = 0; i < asset->data.joint_pos.size(); ++i)
-        {
-            data[i] = asset->data.joint_pos[i];
-        }
-    }
-    else
-    {
-        data.resize(joint_ids.size());
-        for(size_t i = 0; i < joint_ids.size(); ++i)
-        {
-            data[i] = asset->data.joint_pos[joint_ids[i]];
-        }
-    }
-
-    return data;
-}
-
-REGISTER_OBSERVATION(joint_pos_rel)
-{
-    auto & asset = env->robot;
-    std::vector<float> data;
-
     data.resize(asset->data.joint_pos.size());
     for(size_t i = 0; i < asset->data.joint_pos.size(); ++i) {
         data[i] = asset->data.joint_pos[i] - asset->data.default_joint_pos[i];
@@ -77,10 +46,29 @@ REGISTER_OBSERVATION(joint_pos_rel)
             data = tmp_data;
         }
     } catch(const std::exception& e) {
-    
+
     }
 
     return data;
+}
+
+REGISTER_OBSERVATION(joint_vel)
+{
+    auto & asset = env->robot;
+    auto data = asset->data.joint_vel;
+
+    try {
+        const std::vector<int> joint_ids = params["asset_cfg"]["joint_ids"].as<std::vector<int>>();
+
+        if(!joint_ids.empty()) {
+            data.resize(joint_ids.size());
+            for(size_t i = 0; i < joint_ids.size(); ++i) {
+                data[i] = asset->data.joint_vel[joint_ids[i]];
+            }
+        }
+    } catch(const std::exception& e) {
+    }
+    return std::vector<float>(data.data(), data.data() + data.size());
 }
 
 REGISTER_OBSERVATION(joint_vel_rel)
@@ -102,7 +90,7 @@ REGISTER_OBSERVATION(joint_vel_rel)
     return std::vector<float>(data.data(), data.data() + data.size());
 }
 
-REGISTER_OBSERVATION(last_action)
+REGISTER_OBSERVATION(actions)
 {
     auto data = env->action_manager->action();
     return std::vector<float>(data.data(), data.data() + data.size());
@@ -116,9 +104,9 @@ REGISTER_OBSERVATION(velocity_commands)
 
     const auto cfg = env->cfg["commands"]["base_velocity"]["ranges"];
 
-    float deadband = 0.5;
-    float ang_vel_deadband = 0.5;
-    
+    float deadband = 0.1;
+    float ang_vel_deadband = 0.1;
+
     float lin_vel_x_min = cfg["lin_vel_x"][0].as<float>();
     float lin_vel_x_max = cfg["lin_vel_x"][1].as<float>();
 
@@ -170,7 +158,7 @@ REGISTER_OBSERVATION(velocity_commands)
     }
     if(joystick->A()){
         env->robot->data.nav_flag = false;
-    }   
+    }
     if(env->robot->data.nav_flag) {
         vx = nav_cmd[0];
         vy = nav_cmd[1];
