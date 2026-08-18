@@ -60,17 +60,17 @@ public:
     }
 
 
-    int action_dim() 
+    int action_dim()
     {
         return _action_dim;
     }
 
-    std::vector<float> raw_actions() 
+    std::vector<float> raw_actions()
     {
         return _raw_actions;
     }
-    
-    std::vector<float> processed_actions() 
+
+    std::vector<float> processed_actions()
     {
         return _processed_actions;
     }
@@ -102,6 +102,17 @@ public:
     }
 };
 
+class joint_pos : public JointAction
+{
+public:
+    joint_pos(YAML::Node cfg, ManagerBasedRLEnv* env)
+    :JointAction(cfg, env)
+    {
+    }
+};
+
+
+
 class JointVelocityAction : public JointAction
 {
 public:
@@ -111,7 +122,7 @@ public:
     }
 };
 
-REGISTER_ACTION(JointPositionAction);
+REGISTER_ACTION(joint_pos);
 REGISTER_ACTION(JointVelocityAction);
 
 };
