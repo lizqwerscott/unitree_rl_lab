@@ -3,6 +3,8 @@
 #include "isaaclab/envs/mdp/observations/observations.h"
 #include "isaaclab/envs/mdp/actions/joint_actions.h"
 #include <unordered_map>
+#include <filesystem>
+#include <ctime>
 
 namespace isaaclab
 {
@@ -144,6 +146,30 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
     env->encoder->width = 32;
     env->encoder->height = 18;
     env->encoder->history = 1;
+
+    // Per-tick diagnostic recording. Opt-in through the FSM config:
+    //
+    //   Velocity:
+    //     tick_log_dir: ./tick_logs      # omit or leave empty to record nothing
+    //
+    // The writing happens on a background thread, so the 50 Hz policy loop is unaffected. One file
+    // per entry into this state, named by wall-clock start time; parse it with
+    // `deploy/scripts/read_tick_log.py`.
+    if (cfg["tick_log_dir"] && !cfg["tick_log_dir"].as<std::string>().empty()) {
+        const auto dir = std::filesystem::path(cfg["tick_log_dir"].as<std::string>());
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+        if (ec) {
+            spdlog::warn("tick_log_dir '{}' is not usable ({}); recording disabled", dir.string(), ec.message());
+        } else {
+            const auto now = std::time(nullptr);
+            char stamp[32];
+            std::strftime(stamp, sizeof(stamp), "%Y%m%d_%H%M%S", std::localtime(&now));
+            const auto path = dir / ("tick_" + std::string(stamp) + ".bin");
+            env->enable_tick_log(path.string());
+            spdlog::info("tick log -> {}", path.string());
+        }
+    }
 
     // 5s, dt is 0.001
     warmup_steps_max = 5 / 0.001;

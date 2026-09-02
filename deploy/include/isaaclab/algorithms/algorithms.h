@@ -215,6 +215,12 @@ public:
         std::fill(hidden_state_.begin(), hidden_state_.end(), 0.0f);
     }
 
+    /// Recurrent state carried between control ticks. Exposed for diagnostics: a drifting or
+    /// diverging hidden state is one of the few remaining failure hypotheses and is otherwise
+    /// completely unobservable from outside the process. Empty for a non-recurrent policy.
+    const std::vector<float>& hidden_state() const { return hidden_state_; }
+    bool is_rnn() const { return is_rnn_; }
+
 private:
     Ort::Env env;
     Ort::SessionOptions session_options;

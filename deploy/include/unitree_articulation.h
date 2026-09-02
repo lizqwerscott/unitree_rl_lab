@@ -103,14 +103,22 @@ public:
             1,
         };
 
+        if(data.joint_tau.size() != (int)data.joint_ids_map.size()) {
+            data.joint_tau.setZero(data.joint_ids_map.size());
+        }
         for(int i(0); i< data.joint_ids_map.size(); i++) {
             data.joint_pos[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].q() * joint_signs[i];
             data.joint_vel[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].dq() * joint_signs[i];
+            // Same sign convention as position and velocity, so torque stays in policy space.
+            data.joint_tau[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].tau_est() * joint_signs[i];
         }
 
 		image_data_buffer_.resize(cameradata->msg_.width() * cameradata->msg_.height());
 		std::memcpy(image_data_buffer_.data(), cameradata->msg_.data().data(), cameradata->msg_.width() * cameradata->msg_.height() * sizeof(float));
         data.depth_image_buffer->append(image_data_buffer_);
+        // Kept for diagnostics: with the tick clock this is the real camera-to-policy latency.
+        data.last_camera_stamp = cameradata->msg_.header().stamp().sec()
+                               + 1e-9 * cameradata->msg_.header().stamp().nanosec();
 
         // nav cmd
         data.nav_cmd[0] = navcmd->msg_.linear().x();

@@ -54,6 +54,8 @@ public:
         if (policy_thread.joinable()) {
             policy_thread.join();
         }
+        // Flush after the policy thread has stopped, so no record is in flight.
+        env->stop_tick_log();
     }
 
 private:

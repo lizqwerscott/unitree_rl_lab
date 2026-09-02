@@ -57,6 +57,13 @@ FSM:
     transitions: 
       Passive: LT + B.on_pressed
 
+    # Per-tick diagnostic recording: the exact 96-d info, the depth frame the encoder was actually
+    # handed, the latent, the GRU hidden state and the raw action -- none of which any topic
+    # carries. Writing happens on a background thread, so the 50 Hz policy loop is untouched.
+    # One file per entry into this state; read it with deploy/scripts/read_tick_log.py.
+    # Delete this line to record nothing.
+    tick_log_dir: ./tick_logs
+
     policy_dir: config/policy/velocity
     # policy_dir: ../../../logs/rsl_rl/unitree_g1_29dof_velocity
 
