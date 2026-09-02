@@ -67,17 +67,40 @@ public:
         return _buffer;
     }
 
-    std::vector<T> buffer_index(std::vector<int> &indexs) const
+    /**
+     * @brief Get entries by chronological index, oldest first in the result.
+     *
+     * Indices are negative and Python-style: -1 is the entry appended most recently, -2 the one
+     * before it, down to -length().
+     *
+     * This used to compute `_buffer.size() + index`, which is a *raw storage slot*, not a position
+     * in the chronological order. With a ring of 30 and index -1 it always read slot 29, and slot
+     * 29 is only written when the head wraps -- once every 30 pushes. The caller therefore received
+     * a frame that refreshed at 1/30 of the append rate and was held frozen in between, ageing from
+     * 0 to 29 appends. At the 50 Hz policy rate that is a 0-580 ms sawtooth on the depth image, in
+     * a policy trained against a 40-80 ms delay.
+     *
+     * It also pre-filled `result` with `indexs.size()` default-constructed entries and then
+     * appended on top, so the result was twice as long as requested with the first half empty.
+     * That stayed invisible because the one caller flattens the result and an empty vector
+     * contributes nothing, so the size check downstream still passed.
+     */
+    std::vector<T> buffer_index(const std::vector<int> &indexs) const
     {
-        std::vector<T> result(indexs.size());
+        std::vector<T> result;
+        result.reserve(indexs.size());
 
-        for (int i = 0; i < indexs.size(); ++i) {
-			int index = _buffer.size() + indexs[i];
-			if (index < 0 || index >= _buffer.size()) {
-				printf("Error: %d index, %ld\n", index, _buffer.size());
+        const int length = static_cast<int>(_length);
+        for (size_t i = 0; i < indexs.size(); ++i) {
+            const int age = -indexs[i] - 1;   // 0 for the most recently appended entry
+            if (indexs[i] >= 0 || age >= length) {
+                printf("Error: chronological index %d out of range for a buffer of length %d\n",
+                       indexs[i], length);
                 throw std::out_of_range("Index out of range in buffer_index");
-			}
-            result.push_back(_buffer[index]);
+            }
+            // _head is the next write position, so the newest entry sits at _head - 1.
+            const int slot = ((static_cast<int>(_head) - 1 - age) % length + length) % length;
+            result.push_back(_buffer[slot]);
         }
 
         return result;
