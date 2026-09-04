@@ -57,15 +57,19 @@ public:
         action_manager->reset();
         observation_manager->reset();
         // Reset RNN hidden state if policy is RNN-based
-        if (alg) {
-            dynamic_cast<isaaclab::OrtRunner*>(alg.get())->reset_hidden_state();
+        if (auto* ort = dynamic_cast<isaaclab::OrtRunner*>(alg.get())) {
+            ort->reset_hidden_state();
         }
     }
 
     std::vector<float> encode(std::unordered_map<std::string, std::vector<float>> obs)
     {
         // input image from obs
-        std::vector<float> input = obs["obs"];
+        const auto input_it = obs.find("obs");
+        if (input_it == obs.end()) {
+            throw std::runtime_error("Policy observation group 'obs' is missing");
+        }
+        const std::vector<float>& input = input_it->second;
 
         // Update encoder_dim if not initialized or encoder changed
         if (encoder_dim == 0 && encoder) {
@@ -75,8 +79,7 @@ public:
         int offset = input.size() - encoder_dim;
 
         if (offset <= 0) {
-            printf("error: %ld, %d ,%d\n", input.size(), encoder_dim, offset);
-            return std::vector<float>();
+            throw std::runtime_error("Policy observation is shorter than the encoder image input");
         }
 
         // Resize depth_input_cache if needed

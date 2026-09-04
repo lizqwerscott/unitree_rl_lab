@@ -70,19 +70,19 @@ REGISTER_OBSERVATION(depth_image)
     auto & robot = env->robot;
     auto & asset = env->robot;
 
-    int history_skip_frames = params["history_skip_frames"].as<int>();
-    int num_output_frames = params["num_output_frames"].as<int>();
+    int history_skip_frames = params["history_skip_frames"].as<int>(1);
+    int num_output_frames = params["num_output_frames"].as<int>(0);
 
-    int history_length = params["history_length"].as<int>();
+    int history_length = params["history_length"].as<int>(1);
 
-    int downsample_factor = history_skip_frames;
+    int downsample_factor = std::max(history_skip_frames, 1);
 
-    int rs_frequency = 30;
-    int distance_to_image_plane_noised = 37;
+    int frames = std::max(num_output_frames, 1);
+    if (num_output_frames <= 0) {
+        int distance_to_image_plane_noised = 37;
+        frames = int((distance_to_image_plane_noised - 1) / downsample_factor + 1);
+    }
 
-    int frames = int((distance_to_image_plane_noised - 1) / downsample_factor + 1);
-
-    int sim_frequency = int(1 / 0.02);
     int real_downsample_factor = 3;
 
     int start_idx = -1 - real_downsample_factor * (frames - 1);
@@ -142,7 +142,24 @@ State_RLBase::State_RLBase(int state_mode, std::string state_string)
 
     env->alg = std::make_unique<isaaclab::OrtRunner>(policy_dir / "exported" / "actor.onnx");
 
-    env->encoder = std::make_unique<isaaclab::EncoderRunner>(policy_dir / "exported" / "0-depth_encoder.onnx");
+    auto* actor = dynamic_cast<isaaclab::OrtRunner*>(env->alg.get());
+    if (!actor->is_rnn() || actor->input_size(0) != 224 || actor->input_size(1) != 256
+        || actor->output_size(0) != 29 || actor->output_size(1) != 256) {
+        throw std::runtime_error("Actor ONNX contract mismatch: expected 224+256 inputs and 29+256 outputs");
+    }
+
+    auto encoder_path = policy_dir / "exported" / "0-depth_encoder.onnx";
+    if (!std::filesystem::exists(encoder_path)) {
+        encoder_path = policy_dir / "exported" / "0-depth_image_encoder.onnx";
+    }
+    if (!std::filesystem::exists(encoder_path)) {
+        throw std::runtime_error("Depth encoder ONNX not found in " + (policy_dir / "exported").string());
+    }
+    env->encoder = std::make_unique<isaaclab::EncoderRunner>(encoder_path);
+    if (env->encoder->input_size(0) != 576 || env->encoder->input_size(1) != 96
+        || env->encoder->output_size(0) != 128) {
+        throw std::runtime_error("Depth encoder ONNX contract mismatch: expected 576+96 inputs and 128 output");
+    }
     env->encoder->width = 32;
     env->encoder->height = 18;
     env->encoder->history = 1;

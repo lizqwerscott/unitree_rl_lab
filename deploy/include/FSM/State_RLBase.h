@@ -6,6 +6,7 @@
 #include "FSMState.h"
 #include "isaaclab/envs/mdp/actions/joint_actions.h"
 #include "isaaclab/envs/mdp/terminations.h"
+#include <atomic>
 
 class State_RLBase : public FSMState
 {
@@ -17,10 +18,11 @@ public:
         // set gain
         for (int i = 0; i < env->robot->data.joint_stiffness.size(); ++i)
         {
-            lowcmd->msg_.motor_cmd()[i].kp() = env->robot->data.joint_stiffness[i];
-            lowcmd->msg_.motor_cmd()[i].kd() = env->robot->data.joint_damping[i];
-            lowcmd->msg_.motor_cmd()[i].dq() = 0;
-            lowcmd->msg_.motor_cmd()[i].tau() = 0;
+            const auto motor_id = env->robot->data.joint_ids_map[i];
+            lowcmd->msg_.motor_cmd()[motor_id].kp() = env->robot->data.joint_stiffness[i];
+            lowcmd->msg_.motor_cmd()[motor_id].kd() = env->robot->data.joint_damping[i];
+            lowcmd->msg_.motor_cmd()[motor_id].dq() = 0;
+            lowcmd->msg_.motor_cmd()[motor_id].tau() = 0;
         }
 
         env->robot->update();
@@ -62,7 +64,7 @@ private:
     std::unique_ptr<isaaclab::ManagerBasedRLEnv> env;
 
     std::thread policy_thread;
-    bool policy_thread_running = false;
+    std::atomic<bool> policy_thread_running{false};
 
     int warmup_steps = 0;
     int warmup_steps_max = 0;

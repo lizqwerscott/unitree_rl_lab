@@ -6,6 +6,7 @@
 #include "onnxruntime_cxx_api.h"
 #include <iostream>
 #include <mutex>
+#include <limits>
 
 namespace isaaclab
 {
@@ -91,7 +92,7 @@ public:
         // Detect RNN mode: if any input name contains "hidden", activate RNN
         is_rnn_ = false;
         hidden_input_idx_ = 0;
-        hidden_output_idx_ = 1;  // default: second output is hidden
+        hidden_output_idx_ = std::numeric_limits<size_t>::max();
         for (size_t i = 0; i < input_names.size(); ++i) {
             std::string name(input_names[i]);
             if (name.find("hidden") != std::string::npos) {
@@ -130,6 +131,17 @@ public:
                     break;
                 }
             }
+            if (hidden_output_idx_ == std::numeric_limits<size_t>::max()) {
+                throw std::runtime_error("Recurrent policy has no hidden-state output");
+            }
+            size_t hidden_output_size = 1;
+            for (auto dim : output_shapes[hidden_output_idx_]) {
+                if (dim < 0) throw std::runtime_error("Recurrent hidden output has dynamic shape");
+                hidden_output_size *= static_cast<size_t>(dim);
+            }
+            if (hidden_output_size != hidden_state_.size()) {
+                throw std::runtime_error("Recurrent hidden input/output shapes differ");
+            }
         }
 
         // Resize action buffer — for RNN, skip hidden output
@@ -147,6 +159,7 @@ public:
 
     std::vector<float> act(std::unordered_map<std::string, std::vector<float>> obs)
     {
+        std::lock_guard<std::mutex> lock(act_mtx_);
         auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
 
         // Create input tensors
@@ -169,6 +182,11 @@ public:
             }
 
             auto& input_data = obs.at(name_str);
+            if (input_data.size() != static_cast<size_t>(input_sizes[i])) {
+                throw std::runtime_error("ONNX input '" + name_str + "' has "
+                    + std::to_string(input_data.size()) + " values; expected "
+                    + std::to_string(input_sizes[i]));
+            }
             auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_sizes[i], input_shapes[i].data(), input_shapes[i].size());
             input_tensors.push_back(std::move(input_tensor));
         }
@@ -197,7 +215,6 @@ public:
         size_t num_actions = 1;
         for (auto& dim : output_shapes[action_idx]) num_actions *= dim;
 
-        std::lock_guard<std::mutex> lock(act_mtx_);
         action.resize(num_actions);
         std::memcpy(action.data(), floatarr, num_actions * sizeof(float));
 
@@ -212,6 +229,7 @@ public:
 
     void reset_hidden_state()
     {
+        std::lock_guard<std::mutex> lock(act_mtx_);
         std::fill(hidden_state_.begin(), hidden_state_.end(), 0.0f);
     }
 
@@ -220,6 +238,8 @@ public:
     /// completely unobservable from outside the process. Empty for a non-recurrent policy.
     const std::vector<float>& hidden_state() const { return hidden_state_; }
     bool is_rnn() const { return is_rnn_; }
+    size_t input_size(size_t index) const { return static_cast<size_t>(input_sizes.at(index)); }
+    size_t output_size(size_t index) const { return static_cast<size_t>(output_sizes.at(index)); }
 
 private:
     Ort::Env env;
