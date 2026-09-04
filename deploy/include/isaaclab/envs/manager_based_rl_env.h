@@ -11,6 +11,8 @@
 #include "isaaclab/algorithms/algorithms.h"
 #include <iostream>
 #include "isaaclab/utils/utils.h"
+#include <array>
+#include "groot/GrootModeManager.h"
 
 namespace isaaclab
 {
@@ -118,7 +120,12 @@ public:
             obs["obs"] = new_input;
         }
 
-        auto action = alg->act(obs);
+        std::vector<float> action;
+        if (groot_runner) {
+            action = groot_runner->act(obs, last_velocity_command);
+        } else {
+            action = alg->act(obs);
+        }
         action_manager->process_action(action);
     }
 
@@ -131,6 +138,10 @@ public:
     std::shared_ptr<Articulation> robot;
     std::unique_ptr<Algorithms> alg;
     std::unique_ptr<EncoderRunner> encoder;
+    std::unique_ptr<GrootRunner> groot_runner;
+    std::array<float, 3> last_velocity_command{0.0f, 0.0f, 0.0f};
+    std::shared_ptr<groot::GrootModeManager> groot_mode_manager;
+    bool command_override = false;
     long episode_length = 0;
     float global_phase = 0.0f;
 

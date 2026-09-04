@@ -4,6 +4,7 @@
 #pragma once
 
 #include <eigen3/Eigen/Dense>
+#include <array>
 #include "unitree/dds_wrapper/common/unitree_joystick.hpp"
 
 #include "isaaclab/utils/circular_buffer.h"
@@ -20,6 +21,9 @@ struct ArticulationData
 
     std::vector<float> joint_stiffness; // sdk order
     std::vector<float> joint_damping; // sdk order
+    std::array<float, 29> joint_lower{};
+    std::array<float, 29> joint_upper{};
+    std::array<float, 29> joint_velocity_limit{};
 
     // Joint positions of all joints.
     Eigen::VectorXf joint_pos;

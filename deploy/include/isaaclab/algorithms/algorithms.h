@@ -6,6 +6,11 @@
 #include "onnxruntime_cxx_api.h"
 #include <iostream>
 #include <mutex>
+#include <filesystem>
+#include <cmath>
+#include <atomic>
+#include <array>
+#include <spdlog/spdlog.h>
 
 namespace isaaclab
 {
@@ -75,7 +80,11 @@ public:
 
         for (size_t i = 0; i < session->GetInputCount(); ++i) {
             Ort::TypeInfo input_type = session->GetInputTypeInfo(i);
-            input_shapes.push_back(input_type.GetTensorTypeAndShapeInfo().GetShape());
+            auto shape = input_type.GetTensorTypeAndShapeInfo().GetShape();
+            for (auto& dimension : shape) {
+                if (dimension < 0) dimension = 1;
+            }
+            input_shapes.push_back(std::move(shape));
             auto input_name = session->GetInputNameAllocated(i, allocator);
             input_names.push_back(input_name.release());
         }
@@ -91,6 +100,9 @@ public:
         // Get output shape
         Ort::TypeInfo output_type = session->GetOutputTypeInfo(0);
         output_shape = output_type.GetTensorTypeAndShapeInfo().GetShape();
+        for (auto& dimension : output_shape) {
+            if (dimension < 0) dimension = 1;
+        }
         auto output_name = session->GetOutputNameAllocated(0, allocator);
         output_names.push_back(output_name.release());
 
@@ -131,6 +143,9 @@ public:
         return action;
     }
 
+    const std::vector<std::vector<int64_t>>& input_shape() const { return input_shapes; }
+    const std::vector<int64_t>& output_shape_info() const { return output_shape; }
+
 private:
     Ort::Env env;
     Ort::SessionOptions session_options;
@@ -157,5 +172,51 @@ public:
     int height;
 
     int history;
+};
+
+class GrootRunner {
+public:
+    GrootRunner(const std::filesystem::path& policy_dir,
+                const std::vector<float>& default_q)
+    : default_q_(default_q),
+      balance_(policy_dir / "GR00T-WholeBodyControl-Balance.onnx"),
+      walk_(policy_dir / "GR00T-WholeBodyControl-Walk.onnx") {
+        if (default_q_.size() < 15) throw std::runtime_error("Groot default pose must contain 15 lower joints");
+        validate(balance_, "balance");
+        validate(walk_, "walk");
+        latest_target_.assign(default_q_.begin(), default_q_.begin() + 15);
+    }
+
+    std::vector<float> act(const std::unordered_map<std::string, std::vector<float>>& observations,
+                           const std::array<float, 3>& command) {
+        const float speed = std::sqrt(command[0] * command[0] + command[1] * command[1] + command[2] * command[2]);
+        const bool walk = speed >= 0.05f && !stand_;
+        auto action = (walk ? walk_ : balance_).act(observations);
+        std::lock_guard<std::mutex> lock(mutex_);
+        previous_action_ = action;
+        latest_target_.resize(15);
+        for (size_t i = 0; i < 15; ++i) latest_target_[i] = default_q_[i] + action[i] * 0.25f;
+        return action;
+    }
+
+    std::vector<float> latest_target() const { std::lock_guard<std::mutex> lock(mutex_); return latest_target_; }
+    std::vector<float> previous_action() const { std::lock_guard<std::mutex> lock(mutex_); return previous_action_; }
+    void set_stand(bool stand) { stand_ = stand; }
+
+private:
+    static void validate(const OrtRunner& runner, const char* name) {
+        if (runner.input_shape().empty() || runner.input_shape().front().size() != 2 || runner.input_shape().front().back() != 516)
+            throw std::runtime_error(std::string("Groot ") + name + " model input shape must be [1,516]");
+        if (runner.output_shape_info().size() != 2 || runner.output_shape_info().back() != 15)
+            throw std::runtime_error(std::string("Groot ") + name + " model output shape must be [1,15]");
+    }
+
+    std::vector<float> default_q_;
+    OrtRunner balance_;
+    OrtRunner walk_;
+    mutable std::mutex mutex_;
+    std::vector<float> latest_target_;
+    std::vector<float> previous_action_ = std::vector<float>(15, 0.0f);
+    std::atomic<bool> stand_{false};
 };
 };

@@ -4,13 +4,13 @@ FSM:
       id: 1
     FixStand:
       id: 2
-    Velocity:
+    Groot:
       id: 3
-      type: RLBase
+      type: Groot
 
   Passive:
     transitions: 
-      FixStand: LT + up.on_pressed
+      FixStand: LT + up.on_pressed | LT.on_pressed + up
     mode: [
       1,1,1,1,1,1,
       1,1,1,1,1,1,
@@ -27,8 +27,8 @@ FSM:
     ]
   FixStand:
     transitions: 
-      Passive: LT + B.on_pressed
-      Velocity: RB + X.on_pressed
+      Passive: LT + B.on_pressed | LT.on_pressed + B
+      Groot: RB + X.on_pressed | RB.on_pressed + X
     kp: [
       100., 100., 100., 150., 40., 40.,
       100., 100., 100., 150., 40., 40.,
@@ -53,10 +53,11 @@ FSM:
         0, -0.25,0,0.97,-0.15, 0,0
       ]
     ]
-  Velocity:
+  Groot:
     transitions: 
-      Passive: LT + B.on_pressed
-
-    policy_dir: config/policy/velocity
-    # policy_dir: ../../../logs/rsl_rl/unitree_g1_29dof_velocity
-
+      Passive: LT + B.on_pressed | LT.on_pressed + B
+    policy_dir: config/policy/groot
+    arm_transition:
+      duration_ms: 500
+    zmq:
+      port: 6002

@@ -128,6 +128,9 @@ REGISTER_OBSERVATION(velocity_commands)
     float ang_vel_z_min = cfg["ang_vel_z"][0].as<float>();
     float ang_vel_z_max = cfg["ang_vel_z"][1].as<float>();
 
+    if (env->command_override) {
+        return {env->last_velocity_command[0], env->last_velocity_command[1], env->last_velocity_command[2]};
+    }
     float vx = 0;
     float vy = 0;
     float yaw = 0;
@@ -177,11 +180,46 @@ REGISTER_OBSERVATION(velocity_commands)
         yaw = nav_cmd[2];
     }
 
+    env->last_velocity_command = {vx, vy, yaw};
     obs[0] = vx;
     obs[1] = vy;
     obs[2] = yaw;
 
     return obs;
+}
+
+REGISTER_OBSERVATION(height_command)
+{
+    return {params["value"].as<float>(0.74f)};
+}
+
+REGISTER_OBSERVATION(orientation_command)
+{
+    return params["value"].as<std::vector<float>>(std::vector<float>{0.0f, 0.0f, 0.0f});
+}
+
+REGISTER_OBSERVATION(groot_joint_pos)
+{
+    std::vector<float> result;
+    const auto& q = env->robot->data.joint_pos;
+    const auto& default_q = env->robot->data.default_joint_pos;
+    for (int i = 0; i < 29 && i < q.size(); ++i)
+        result.push_back(q[i] - (i < default_q.size() ? default_q[i] : 0.0f));
+    return result;
+}
+
+REGISTER_OBSERVATION(groot_joint_vel)
+{
+    std::vector<float> result;
+    const auto& dq = env->robot->data.joint_vel;
+    for (int i = 0; i < 29 && i < dq.size(); ++i) result.push_back(dq[i]);
+    return result;
+}
+
+REGISTER_OBSERVATION(groot_previous_action)
+{
+    if (!env->groot_runner) return std::vector<float>(15, 0.0f);
+    return env->groot_runner->previous_action();
 }
 
 REGISTER_OBSERVATION(gait_phase)

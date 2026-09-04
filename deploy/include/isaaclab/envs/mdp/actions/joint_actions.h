@@ -17,22 +17,26 @@ public:
     JointAction(YAML::Node cfg, ManagerBasedRLEnv* env)
     :ActionTerm(cfg, env)
     {
-        if(cfg["joint_ids"].IsNull()) {
+        const auto joint_ids_node = cfg["joint_ids"];
+        if(!joint_ids_node.IsDefined() || joint_ids_node.IsNull()) {
             _action_dim = env->robot->data.joint_ids_map.size();
         } else {
-            _joint_ids = cfg["joint_ids"].as<std::vector<int>>();
+            _joint_ids = joint_ids_node.as<std::vector<int>>();
             _action_dim = _joint_ids.size();
         }
         _raw_actions.resize(_action_dim, 0.0f);
         _processed_actions.resize(_action_dim, 0.0f);
-        if(!cfg["scale"].IsNull()) {
+        const auto scale_node = cfg["scale"];
+        if(scale_node.IsDefined() && !scale_node.IsNull()) {
             _scale = cfg["scale"].as<std::vector<float>>();
         }
-        if(!cfg["offset"].IsNull()) {
+        const auto offset_node = cfg["offset"];
+        if(offset_node.IsDefined() && !offset_node.IsNull()) {
             _offset = cfg["offset"].as<std::vector<float>>();
         }
-        if(!cfg["clip"].IsNull()) {
-            _clip = cfg["clip"].as<std::vector<std::vector<float> >>();
+        const auto clip_node = cfg["clip"];
+        if(clip_node.IsDefined() && !clip_node.IsNull()) {
+            _clip = clip_node.as<std::vector<std::vector<float> >>();
         }
     }
 
