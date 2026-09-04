@@ -123,7 +123,13 @@ public:
 		const size_t required_bytes = pixel_count * sizeof(float);
 		const bool image_layout = width == 32 && height == 18;
 		const bool flat_layout = width == 32 * 18 && height == 1;
-		if ((!image_layout && !flat_layout) || pixel_count != 32 * 18
+		const auto &fields = cameradata->msg_.fields();
+		const bool packed_float_z = cameradata->msg_.point_step() == sizeof(float)
+		    && (fields.empty() || (fields.size() == 1 && fields[0].name() == "z"
+		        && fields[0].offset() == 0
+		        && fields[0].datatype() == sensor_msgs::msg::dds_::PointField_Constants::FLOAT32_
+		        && fields[0].count() == 1));
+		if ((!image_layout && !flat_layout) || !packed_float_z || pixel_count != 32 * 18
 		    || cameradata->msg_.data().size() < required_bytes) {
 			image_data_buffer_.assign(32 * 18, 0.0f);
 		} else {
