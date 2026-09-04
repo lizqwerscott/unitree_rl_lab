@@ -2,6 +2,7 @@
 
 #include "FSMState.h"
 #include "groot/GrootModeManager.h"
+#include "groot/LowStateBroadcaster.h"
 #include "groot/RemoteCommandReceiver.h"
 #include "isaaclab/envs/manager_based_rl_env.h"
 #include "groot/UrdfLimits.h"
@@ -19,6 +20,7 @@ private:
     std::unique_ptr<isaaclab::ManagerBasedRLEnv> env;
     std::shared_ptr<groot::GrootModeManager> mode_manager;
     std::unique_ptr<groot::RemoteCommandReceiver> receiver;
+    std::unique_ptr<groot::LowStateBroadcaster> state_broadcaster;
     std::thread policy_thread;
     std::atomic<bool> policy_thread_running_{false};
     std::array<float, 29> safe_home_{};

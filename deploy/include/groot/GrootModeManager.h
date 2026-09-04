@@ -22,6 +22,7 @@ struct CommandSnapshot {
     VelocityCommand velocity;
     std::array<float, 14> arm_q{};
     uint64_t sequence = 0;
+    double timestamp = 0.0;
     std::chrono::steady_clock::time_point received{};
     bool valid = false;
 };

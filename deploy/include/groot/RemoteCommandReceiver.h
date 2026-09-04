@@ -1,6 +1,8 @@
 #pragma once
 
 #include "groot/GrootModeManager.h"
+#include "groot/JointNameMap.h"
+#include <array>
 #include <atomic>
 #include <mutex>
 #include <string>
@@ -24,20 +26,47 @@ public:
     static bool parse_packet(const std::string& payload, CommandSnapshot& out,
                              const CommandSnapshot* previous = nullptr) {
         try {
+            // LeRobot "action" frame, e.g.:
+            //   {"cmd":"action",
+            //    "action":{ "kLeftShoulderPitch.q":-0.20, ..., "kRightWristYaw.q":-0.01,
+            //              "remote.lx":0.0,"remote.ly":0.0,"remote.rx":0.0,"remote.ry":0.0 },
+            //    "timestamp": 1788514855.52}
             const YAML::Node root = YAML::Load(payload);
-            if (!root["seq"] || !root["timestamp"] || !root["remote"] || !root["arm_q"]) return false;
-            out.sequence = root["seq"].as<uint64_t>();
-            if (previous && out.sequence <= previous->sequence) return false;
+            if (!root["action"] || !root["timestamp"]) return false;
             const double timestamp = root["timestamp"].as<double>();
             if (!std::isfinite(timestamp)) return false;
-            const auto remote = root["remote"];
-            out.velocity = {remote["ly"].as<float>(), -remote["lx"].as<float>(), -remote["rx"].as<float>()};
-            const auto arm = root["arm_q"];
-            if (!arm.IsSequence() || arm.size() != 14 || !finite(out.velocity)) return false;
-            for (size_t i = 0; i < 14; ++i) {
-                out.arm_q[i] = arm[i].as<float>();
-                if (!std::isfinite(out.arm_q[i]) || std::abs(out.arm_q[i]) > 3.2f) return false;
+            // No "seq" in LeRobot frames; keep a monotonic gate on the sender timestamp.
+            if (previous && timestamp <= previous->timestamp) return false;
+            const auto action = root["action"];
+            if (!action.IsMap()) return false;
+
+            auto axis = [&action](const char* key) -> float {
+                const YAML::Node value = action[std::string("remote.") + key];
+                return value ? value.as<float>() : 0.0f;
+            };
+            // Axis mapping matches the gamepad convention: vx=ly, vy=-lx, wz=-rx (ry unused).
+            out.velocity = {axis("ly"), -axis("lx"), -axis("rx")};
+            if (!finite(out.velocity)) return false;
+
+            // Arm joints (motor index 15..28): match "<name>.q" keys by name,
+            // case-insensitively (dataset may spell kLeftWristYaw as kLeftWristyaw).
+            std::array<bool, 14> filled{};
+            int arm_count = 0;
+            for (const auto& entry : action) {
+                if (!entry.first.IsScalar()) continue;
+                const std::string key = entry.first.as<std::string>();
+                if (key.size() < 3 || key.compare(key.size() - 2, 2, ".q") != 0) continue;
+                const std::string base = key.substr(0, key.size() - 2);
+                const int slot = g1::arm_slot_of_lerobot_name(base);
+                if (slot < 0) continue;  // ignore non-arm joints if the frame includes them
+                const float value = entry.second.as<float>();
+                if (!std::isfinite(value) || std::abs(value) > 3.2f) return false;
+                if (!filled[slot]) { filled[slot] = true; ++arm_count; }
+                out.arm_q[slot] = value;
             }
+            if (arm_count != 14) return false;
+            out.timestamp = timestamp;
+            out.sequence = previous ? previous->sequence + 1 : 0;
             out.valid = true;
             out.received = std::chrono::steady_clock::now();
             return true;

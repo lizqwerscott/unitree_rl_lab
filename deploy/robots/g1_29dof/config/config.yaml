@@ -61,3 +61,4 @@ FSM:
       duration_ms: 500
     zmq:
       port: 6002
+      state_port: 6001

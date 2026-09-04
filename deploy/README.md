@@ -118,16 +118,47 @@ angular.z -> wz
 
 ### VLA / ZMQ
 
-监听 TCP PULL 端口 `6002`。消息必须包含递增 `seq`、有限 `timestamp`、`remote` 和 14 维 `arm_q`：
+监听 TCP PULL 端口 `6002`。当前采用 LeRobot `action` 帧格式：`action` 内含 14 个具名手臂关节（`<名字>.q`）与 `remote.lx/ly/rx/ry`，外加 `timestamp`（发送侧单调递增）：
 
 ```json
 {
-  "seq": 123,
-  "timestamp": 1720000000.12,
-  "remote": {"lx": 0.0, "ly": 0.0, "rx": 0.0, "ry": 0.0},
-  "arm_q": [0.1, 0.2, -0.3, 0.5, 0.0, 0.0, 0.0,
-            -0.1, -0.2, 0.3, 0.5, 0.0, 0.0, 0.0]
+  "cmd": "action",
+  "action": {
+    "kLeftShoulderPitch.q": -0.206, "kLeftShoulderRoll.q": 0.540,
+    "kLeftShoulderYaw.q": 0.287,    "kLeftElbow.q": -0.253,
+    "kLeftWristRoll.q": 0.131,      "kLeftWristPitch.q": -0.044,
+    "kLeftWristYaw.q": 0.274,
+    "kRightShoulderPitch.q": -0.544, "kRightShoulderRoll.q": -0.519,
+    "kRightShoulderYaw.q": -0.179,   "kRightElbow.q": 0.050,
+    "kRightWristRoll.q": -0.091,     "kRightWristPitch.q": 0.030,
+    "kRightWristYaw.q": -0.013,
+    "remote.lx": 0.0, "remote.ly": 0.0, "remote.rx": -0.175, "remote.ry": 0.0
+  },
+  "timestamp": 1788514855.53
 }
 ```
 
-轴映射为 `vx=ly`、`vy=-lx`、`wz=-rx`；`ry` 当前保留但不参与行走控制。消息会进行角度范围和序号检查，非法包直接丢弃；关节变化速率由 FSM 输出限速器统一处理。
+映射规则：
+- 手臂关节按名映射到电机序号 `15..28`（左臂 7 个在前、右臂 7 个在后），每项必须是有限值且 `|v|<=3.2`，任一缺失即整包丢弃。
+- 摇杆轴映射 `vx=remote.ly`、`vy=-remote.lx`、`wz=-remote.rx`；`remote.ry` 保留不参与行走。
+- 该协议没有 `seq`，改用 `timestamp` 作为单调门限：`timestamp` 必须大于上一条，否则判为重复/乱序丢弃。
+- 关节变化速率由 FSM 输出限速器统一处理。
+
+> 关节序对应表见 `deploy/include/groot/JointNameMap.h`；不同模型（pi0.5 / LeRobot / Groot）与宇树 SDK 的关节名与顺序差异见 `deploy/docs/joint_naming_and_order.md`；可用 `deploy/scripts/check_joint_mapping.py` 交叉核对。
+
+进入 `Groot` FSM 后，机器人还会通过 ZMQ `PUB`（端口 `6001`，配置 `Groot.zmq.state_port`）广播实时 LowState，供上位机（如 LeRobot rollout）读取本体状态。载荷与 LeRobot `rt/lowstate` 桥接协议一致：
+
+```json
+{
+  "topic": "rt/lowstate",
+  "data": {
+    "motor_state": [{"q": 0.1, "dq": 0.0, "tau_est": 0.0, "temperature": 30.0}],
+    "imu_state": {"quaternion": [1, 0, 0, 0], "gyroscope": [0, 0, 0],
+                  "accelerometer": [0, 0, 0], "rpy": [0, 0, 0], "temperature": 0},
+    "wireless_remote": "<base64>",
+    "mode_machine": 5
+  }
+}
+```
+
+`motor_state` 固定 35 项（与 unitree `hg` LowState 布局一致），约 500 Hz 广播；无订阅者时静默丢弃。
