@@ -4,6 +4,9 @@
 **/*.so
 **/*.log*
 
+!**/onnxruntime-linux-aarch64-1.16.0-self/lib/
+!**/onnxruntime-linux-aarch64-1.16.0-self/lib/**/*.so
+
 # Omniverse
 **/*.dmp
 **/.thumbs
