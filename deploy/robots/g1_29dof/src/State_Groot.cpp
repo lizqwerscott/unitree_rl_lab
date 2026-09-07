@@ -76,6 +76,7 @@ void State_Groot::enter() {
         motor.dq() = 0; motor.tau() = 0;
     }
     env->reset();
+    first_nav_logged_ = false;
     receiver->start();
     state_broadcaster->start([lowstate = FSMState::lowstate]() -> groot::LowStateBroadcaster::Snapshot {
         std::lock_guard<std::mutex> lock(lowstate->mutex_);
@@ -111,7 +112,15 @@ void State_Groot::run() {
     }
     if (FSMState::navcmd && !FSMState::navcmd->isTimeout()) {
         const auto& message = FSMState::navcmd->msg_;
-        const groot::VelocityCommand navigation{message.linear().x(), message.linear().y(), message.angular().z()};
+        if (!first_nav_logged_) {
+            first_nav_logged_ = true;
+            spdlog::info("Groot: first navigation velocity command received (vx={:.2f}, vy={:.2f}, wz={:.2f})",
+                         message.linear().x(), message.linear().y(), message.angular().z());
+        }
+        const groot::VelocityCommand navigation{
+            static_cast<float>(message.linear().x()),
+            static_cast<float>(message.linear().y()),
+            static_cast<float>(message.angular().z())};
         if (!nav_initialized_ || navigation.vx != last_nav_command_.vx || navigation.vy != last_nav_command_.vy || navigation.wz != last_nav_command_.wz) {
             mode_manager->update_navigation(navigation);
             last_nav_command_ = navigation;

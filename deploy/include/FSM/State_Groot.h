@@ -28,6 +28,7 @@ private:
     std::array<float, 29> last_published_q_{};
     groot::VelocityCommand last_nav_command_{};
     bool nav_initialized_ = false;
+    bool first_nav_logged_ = false;
     std::function<bool(const unitree::common::UnitreeJoystick&)> gamepad_mode_key_;
     std::function<bool(const unitree::common::UnitreeJoystick&)> navigation_mode_key_;
     std::function<bool(const unitree::common::UnitreeJoystick&)> vla_mode_key_;
