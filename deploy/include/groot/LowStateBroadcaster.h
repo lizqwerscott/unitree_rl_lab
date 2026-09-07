@@ -14,6 +14,7 @@
 
 #if __has_include(<zmq.hpp>)
 #include <zmq.hpp>
+#include "groot/ZmqCompat.h"
 #define GROOT_HAS_ZMQ 1
 #else
 #define GROOT_HAS_ZMQ 0
@@ -123,7 +124,7 @@ private:
     void run() {
         zmq::context_t context(1);
         zmq::socket_t socket(context, zmq::socket_type::pub);
-        socket.set(zmq::sockopt::sndhwm, 2);
+        zmq_detail::set_sockopt_int(socket, ZMQ_SNDHWM, 2);
         try {
             socket.bind("tcp://*:" + std::to_string(port_));
         } catch (const zmq::error_t& e) {
@@ -131,6 +132,7 @@ private:
             running_ = false;
             return;
         }
+        std::fprintf(stderr, "[LowStateBroadcaster] broadcasting LowState on tcp://*:%d (PUB, 500 Hz)\n", port_);
         const auto period = std::chrono::microseconds(2000);  // 500 Hz
         auto next = std::chrono::steady_clock::now();
         uint32_t last_tick = 0;
