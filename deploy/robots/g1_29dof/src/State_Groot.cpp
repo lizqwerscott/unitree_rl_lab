@@ -142,13 +142,8 @@ void State_Groot::run() {
         : mode_manager->mode();
     if (requested_mode != mode_manager->mode()) {
         const auto old_mode = mode_manager->mode();
-        if (mode_manager->request_mode(requested_mode, now, actual))
+        if (mode_manager->request_mode(requested_mode, now, actual)) {
             spdlog::info("Groot: control mode {} -> {}", mode_name(old_mode), mode_name(requested_mode));
-        else {
-            const char* reason = requested_mode == groot::ControlMode::VLA
-                ? "no fresh valid ZMQ packet on port 6002"
-                : "no fresh navigation command";
-            spdlog::warn("Groot: rejected control mode switch to {} ({})", mode_name(requested_mode), reason);
         }
     }
     const auto requested_locomotion = auto_mode_key_(joystick) || (keyboard_pressed && key == "m")

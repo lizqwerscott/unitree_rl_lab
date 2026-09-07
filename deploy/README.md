@@ -16,6 +16,8 @@ Passive -> FixStand -> Groot
 - `Navigation`：使用 `rt/nav_cmd` 的 `vx/vy/wz`，手臂回到 Groot 上游定义的零姿态 `safe_home_q`。
 - `VLA`：使用 ZMQ 6002 端口输入速度和 14 维手臂目标。
 
+在 `Navigation` 和 `VLA` 模式下，手柄任一速度轴绝对值超过 `0.05` 时，手柄速度临时覆盖外部速度指令；松开摇杆后恢复当前模式的外部指令。`Stand` 模式仍会强制速度为零。
+
 Groot 的 `safe_home_q` 手臂关节（15–28）遵循 LeRobot 的默认零位，便于 Pi0.5 的第一条有效手臂指令直接接管；下肢默认位仍使用 Groot 的策略默认值。
 
 推理线程以 50 Hz 运行，FSM 线程以 1 kHz 合并并发布唯一的 `LowCmd`。模型已从 Hugging Face 仓库 `nepyope/GR00T-WholeBodyControl_g1` 下载，运行时不会再从网络下载模型。
@@ -115,8 +117,8 @@ cmake --build build -j$(nproc)
 | 按键 | 操作 |
 | --- | --- |
 | `1` | 切换 `Gamepad` |
-| `2` | 切换 `Navigation`；没有新鲜导航消息时拒绝切换 |
-| `3` | 切换 `VLA`；没有新鲜且完整的 ZMQ 包时拒绝切换 |
+| `2` | 切换 `Navigation`；没有新鲜导航包时速度为零 |
+| `3` | 切换 `VLA`；没有新鲜 ZMQ 包时速度为零、手臂保持安全姿态 |
 | `m` | `Auto`：速度范数小于 `0.05` 使用 balance，否则使用 walk |
 | `p` | `Stand`：速度强制为零并使用 balance |
 

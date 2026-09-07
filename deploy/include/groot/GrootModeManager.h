@@ -1,6 +1,7 @@
 #pragma once
 
 #include "groot/ArmBezierTrajectory.h"
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -61,8 +62,6 @@ public:
     bool request_mode(ControlMode mode, double now,
                       const std::array<float, 14>& actual_arm) {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (mode == ControlMode::Navigation && !fresh(navigation_, now, navigation_timeout_)) return false;
-        if (mode == ControlMode::VLA && !fresh(vla_, now, vla_timeout_)) return false;
         if (mode == mode_) return true;
         if (mode_ == ControlMode::VLA && mode != ControlMode::VLA)
             trajectory_.start(actual_arm, safe_home_, transition_duration_, now);
@@ -76,15 +75,16 @@ public:
     void set_timeouts(double navigation_seconds, double vla_seconds) {
         navigation_timeout_ = navigation_seconds; vla_timeout_ = vla_seconds;
     }
-
     VelocityCommand velocity(const VelocityCommand& gamepad, double now) const {
         std::lock_guard<std::mutex> lock(mutex_);
         if (locomotion_ == LocomotionMode::Stand) return {};
+        const auto manual = clamp(gamepad);
+        if (mode_ != ControlMode::Gamepad && active(manual)) return manual;
         if (mode_ == ControlMode::Navigation)
             return fresh(navigation_, now, navigation_timeout_) ? clamp(navigation_.velocity) : VelocityCommand{};
         if (mode_ == ControlMode::VLA)
             return fresh(vla_, now, vla_timeout_) ? clamp(vla_.velocity) : VelocityCommand{};
-        return clamp(gamepad);
+        return manual;
     }
 
     std::array<float, 14> arm_target(double now) {
@@ -97,7 +97,13 @@ public:
     const std::array<float, 29>& policy_default() const { return policy_default_; }
 
 private:
+    static constexpr float kGamepadOverrideDeadband = 0.05f;
     static bool finite(const VelocityCommand& c) { return std::isfinite(c.vx) && std::isfinite(c.vy) && std::isfinite(c.wz); }
+    static bool active(const VelocityCommand& c) {
+        return finite(c) && (std::fabs(c.vx) > kGamepadOverrideDeadband
+            || std::fabs(c.vy) > kGamepadOverrideDeadband
+            || std::fabs(c.wz) > kGamepadOverrideDeadband);
+    }
     VelocityCommand clamp(const VelocityCommand& command) const {
         return {
             std::clamp(command.vx, command_lower_.vx, command_upper_.vx),
