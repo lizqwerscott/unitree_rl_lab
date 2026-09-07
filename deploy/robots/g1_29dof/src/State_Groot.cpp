@@ -8,6 +8,10 @@
 #include <chrono>
 
 namespace {
+constexpr float kGrootHeightStep = 0.001f;
+constexpr float kGrootHeightMin = 0.50f;
+constexpr float kGrootHeightMax = 1.00f;
+
 std::array<float, 29> yaml_array(const YAML::Node& node, const char* key) {
     std::array<float, 29> result{};
     if (node[key] && node[key].size() == 29) {
@@ -38,6 +42,9 @@ State_Groot::State_Groot(int state_mode, std::string state_string)
     vla_mode_key_ = unitree::common::dsl::Compile(*unitree::common::dsl::Parser("LB + A.on_pressed | LB.on_pressed + A").Parse());
     auto_mode_key_ = unitree::common::dsl::Compile(*unitree::common::dsl::Parser("RB + Y.on_pressed | RB.on_pressed + Y").Parse());
     stand_mode_key_ = unitree::common::dsl::Compile(*unitree::common::dsl::Parser("RB + B.on_pressed | RB.on_pressed + B").Parse());
+    height_up_key_ = unitree::common::dsl::Compile(*unitree::common::dsl::Parser("RB").Parse());
+    height_down_key_ = unitree::common::dsl::Compile(*unitree::common::dsl::Parser("RT").Parse());
+    height_reset_key_ = unitree::common::dsl::Compile(*unitree::common::dsl::Parser("RB + X.on_pressed | RB.on_pressed + X").Parse());
     const auto cfg = param::config["FSM"][state_string];
     const auto policy_dir = param::parser_policy_dir(cfg["policy_dir"].as<std::string>());
     const auto policy_cfg = YAML::LoadFile(policy_dir / "params" / "deploy.yaml");
@@ -50,6 +57,10 @@ State_Groot::State_Groot(int state_mode, std::string state_string)
     env->groot_mode_manager = mode_manager;
     env->groot_runner = std::make_unique<isaaclab::GrootRunner>(policy_dir / "exported", std::vector<float>(policy_cfg["groot_policy_default_q"].as<std::vector<float>>()));
     mode_manager->set_safe_home(safe_home_);
+    std::array<float, 14> arm_velocity_limits{};
+    for (size_t i = 0; i < arm_velocity_limits.size(); ++i) arm_velocity_limits[i] = limits_[15 + i].velocity;
+    mode_manager->set_arm_velocity_limits(
+        arm_velocity_limits, cfg["arm_transition"]["velocity_scale"].as<float>(0.5f));
     const auto ranges = policy_cfg["commands"]["base_velocity"]["ranges"];
     mode_manager->set_command_limits(
         {ranges["lin_vel_x"][0].as<float>(), ranges["lin_vel_y"][0].as<float>(), ranges["ang_vel_z"][0].as<float>()},
@@ -58,7 +69,6 @@ State_Groot::State_Groot(int state_mode, std::string state_string)
     const auto default_values = policy_cfg["groot_policy_default_q"].as<std::vector<float>>();
     std::copy(default_values.begin(), default_values.end(), defaults.begin());
     mode_manager->set_policy_default(defaults);
-    mode_manager->set_transition_duration(cfg["arm_transition"]["duration_ms"].as<float>(500.0f) / 1000.0f);
     receiver = std::make_unique<groot::RemoteCommandReceiver>(cfg["zmq"]["port"].as<int>(6002));
     state_broadcaster = std::make_unique<groot::LowStateBroadcaster>(cfg["zmq"]["state_port"].as<int>(6001));
     registered_checks.emplace_back([&] { return isaaclab::mdp::bad_orientation(env.get(), 1.0); }, FSMStringMap.right.at("Passive"));
@@ -77,6 +87,7 @@ void State_Groot::enter() {
     }
     env->reset();
     first_nav_logged_ = false;
+    next_height_adjust_time_ = 0.0;
     receiver->start();
     state_broadcaster->start([lowstate = FSMState::lowstate]() -> groot::LowStateBroadcaster::Snapshot {
         std::lock_guard<std::mutex> lock(lowstate->mutex_);
@@ -106,10 +117,6 @@ void State_Groot::enter() {
 
 void State_Groot::run() {
     const auto now = steady_seconds();
-    if (receiver) {
-        groot::CommandSnapshot remote;
-        if (receiver->latest(remote)) mode_manager->update_vla(remote);
-    }
     if (FSMState::navcmd && !FSMState::navcmd->isTimeout()) {
         const auto& message = FSMState::navcmd->msg_;
         if (!first_nav_logged_) {
@@ -146,6 +153,27 @@ void State_Groot::run() {
             spdlog::info("Groot: control mode {} -> {}", mode_name(old_mode), mode_name(requested_mode));
         }
     }
+    const bool keyboard_height_up = keyboard_pressed && key == "up";
+    const bool keyboard_height_down = keyboard_pressed && key == "down";
+    const bool keyboard_height_reset = keyboard_pressed && (key == "r" || key == "R");
+    if (height_reset_key_(joystick) || keyboard_height_reset) {
+        env->groot_height_command.store(env->groot_height_default, std::memory_order_relaxed);
+        next_height_adjust_time_ = now;
+        spdlog::info("Groot height reset to {:.3f} m", env->groot_height_default);
+    } else if (now >= next_height_adjust_time_
+               && (height_up_key_(joystick) || height_down_key_(joystick)
+                   || keyboard_height_up || keyboard_height_down)) {
+        const float direction = (height_up_key_(joystick) || keyboard_height_up) ? 1.0f : -1.0f;
+        const float current = env->groot_height_command.load(std::memory_order_relaxed);
+        const float updated = std::clamp(current + direction * kGrootHeightStep,
+                                         kGrootHeightMin, kGrootHeightMax);
+        env->groot_height_command.store(updated, std::memory_order_relaxed);
+        next_height_adjust_time_ = now + 0.02;
+    }
+    if (receiver) {
+        groot::CommandSnapshot remote;
+        if (receiver->latest(remote)) mode_manager->update_vla(remote, actual, now);
+    }
     const auto requested_locomotion = auto_mode_key_(joystick) || (keyboard_pressed && key == "m")
         ? groot::LocomotionMode::Auto
         : stand_mode_key_(joystick) || (keyboard_pressed && key == "p")
@@ -168,11 +196,16 @@ void State_Groot::run() {
     auto arm = mode_manager->arm_target(now);
     for (size_t i = 0; i < arm.size(); ++i) {
         const size_t joint = 15 + i;
+        auto& motor = lowcmd->msg_.motor_cmd()[joint];
+        motor.kp() = env->robot->data.joint_stiffness[joint];
+        motor.kd() = env->robot->data.joint_damping[joint];
+        motor.dq() = 0;
+        motor.tau() = 0;
         arm[i] = std::clamp(arm[i], limits_[joint].lower, limits_[joint].upper);
         const float max_delta = limits_[joint].velocity * 0.001f;
         arm[i] = std::clamp(arm[i], last_published_q_[joint] - max_delta, last_published_q_[joint] + max_delta);
         last_published_q_[joint] = arm[i];
-        lowcmd->msg_.motor_cmd()[joint].q() = arm[i];
+        motor.q() = arm[i];
     }
 }
 

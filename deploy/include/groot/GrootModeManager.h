@@ -39,7 +39,11 @@ public:
         for (size_t i = 0; i < 14; ++i) safe_home_[i] = q[i + 15];
     }
     void set_policy_default(const std::array<float, 29>& q) { policy_default_ = q; }
-    void set_transition_duration(float seconds) { transition_duration_ = std::max(0.0f, seconds); }
+    void set_arm_velocity_limits(const std::array<float, 14>& limits, float scale = 1.0f) {
+        const float safe_scale = std::clamp(scale, 0.01f, 1.0f);
+        for (size_t i = 0; i < arm_velocity_limits_.size(); ++i)
+            arm_velocity_limits_[i] = std::max(0.0f, limits[i]) * safe_scale;
+    }
     void set_command_limits(const VelocityCommand& lower, const VelocityCommand& upper) {
         command_lower_ = lower;
         command_upper_ = upper;
@@ -52,19 +56,43 @@ public:
         navigation_.valid = finite(command);
     }
 
-    void update_vla(const CommandSnapshot& snapshot) {
+    void update_vla(const CommandSnapshot& snapshot,
+                    const std::array<float, 14>& actual_arm,
+                    double now) {
         if (!finite(snapshot.velocity)) return;
         std::lock_guard<std::mutex> lock(mutex_);
+        const bool new_session_command = !vla_entry_has_baseline_
+            || snapshot.sequence > vla_entry_sequence_;
+        if (mode_ == ControlMode::VLA && vla_transition_pending_ && !new_session_command) return;
+        const bool transition_required = mode_ == ControlMode::VLA
+            && (vla_transition_pending_ || !fresh(vla_, now, vla_timeout_));
         vla_ = snapshot;
         vla_.valid = true;
+        if (transition_required && new_session_command) {
+            trajectory_.start(actual_arm, vla_.arm_q, arm_velocity_limits_, now);
+            vla_transition_pending_ = false;
+        }
+        if (mode_ == ControlMode::VLA && new_session_command) {
+            vla_entry_has_baseline_ = true;
+            vla_entry_sequence_ = snapshot.sequence;
+        }
+        last_vla_arm_q_ = snapshot.arm_q;
+        has_last_vla_arm_ = true;
     }
 
     bool request_mode(ControlMode mode, double now,
                       const std::array<float, 14>& actual_arm) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (mode == mode_) return true;
-        if (mode_ == ControlMode::VLA && mode != ControlMode::VLA)
-            trajectory_.start(actual_arm, safe_home_, transition_duration_, now);
+        if (mode_ == ControlMode::VLA && mode != ControlMode::VLA) {
+            trajectory_.start(actual_arm, safe_home_, arm_velocity_limits_, now);
+            vla_transition_pending_ = false;
+        } else if (mode_ != ControlMode::VLA && mode == ControlMode::VLA) {
+            vla_entry_has_baseline_ = vla_.valid;
+            vla_entry_sequence_ = vla_.sequence;
+            vla_.valid = false;
+            vla_transition_pending_ = true;
+        }
         mode_ = mode;
         return true;
     }
@@ -89,7 +117,12 @@ public:
 
     std::array<float, 14> arm_target(double now) {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (mode_ == ControlMode::VLA && fresh(vla_, now, vla_timeout_)) return vla_.arm_q;
+        if (mode_ == ControlMode::VLA) {
+            if (vla_transition_pending_) return safe_home_;
+            if (!trajectory_.finished()) return trajectory_.sample(now);
+            if (has_last_vla_arm_) return last_vla_arm_q_;
+            return safe_home_;
+        }
         if (mode_ != ControlMode::VLA && !trajectory_.finished()) return trajectory_.sample(now);
         return safe_home_;
     }
@@ -123,7 +156,12 @@ private:
     CommandSnapshot navigation_{};
     CommandSnapshot vla_{};
     ArmBezierTrajectory trajectory_;
-    float transition_duration_ = 0.5f;
+    bool vla_transition_pending_ = false;
+    bool vla_entry_has_baseline_ = false;
+    uint64_t vla_entry_sequence_ = 0;
+    std::array<float, 14> arm_velocity_limits_{};
+    std::array<float, 14> last_vla_arm_q_{};
+    bool has_last_vla_arm_ = false;
     double navigation_timeout_ = 0.3;
     double vla_timeout_ = 0.3;
     VelocityCommand command_lower_{-1.0f, -1.0f, -1.0f};

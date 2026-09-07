@@ -12,6 +12,7 @@
 #include <iostream>
 #include "isaaclab/utils/utils.h"
 #include <array>
+#include <atomic>
 #include "groot/GrootModeManager.h"
 
 namespace isaaclab
@@ -29,6 +30,8 @@ public:
     {
         // Parse configuration
         this->step_dt = cfg["step_dt"].as<float>();
+        groot_height_default = cfg["observations"]["height_command"]["params"]["value"].as<float>(0.74f);
+        groot_height_command.store(groot_height_default);
         robot->data.joint_ids_map = cfg["joint_ids_map"].as<std::vector<float>>();
         robot->data.joint_pos.resize(robot->data.joint_ids_map.size());
         robot->data.joint_vel.resize(robot->data.joint_ids_map.size());
@@ -53,6 +56,7 @@ public:
     {
         global_phase = 0;
         episode_length = 0;
+        groot_height_command.store(groot_height_default);
         robot->update();
         action_manager->reset();
         observation_manager->reset();
@@ -140,6 +144,8 @@ public:
     std::unique_ptr<EncoderRunner> encoder;
     std::unique_ptr<GrootRunner> groot_runner;
     std::array<float, 3> last_velocity_command{0.0f, 0.0f, 0.0f};
+    float groot_height_default = 0.74f;
+    std::atomic<float> groot_height_command{0.74f};
     std::shared_ptr<groot::GrootModeManager> groot_mode_manager;
     bool command_override = false;
     long episode_length = 0;

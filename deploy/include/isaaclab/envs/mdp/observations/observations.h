@@ -190,7 +190,7 @@ REGISTER_OBSERVATION(velocity_commands)
 
 REGISTER_OBSERVATION(height_command)
 {
-    return {params["value"].as<float>(0.74f)};
+    return {env->groot_height_command.load(std::memory_order_relaxed)};
 }
 
 REGISTER_OBSERVATION(orientation_command)

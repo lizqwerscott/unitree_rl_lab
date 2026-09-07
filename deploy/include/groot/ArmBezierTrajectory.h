@@ -10,11 +10,18 @@ class ArmBezierTrajectory {
 public:
     void start(const std::array<float, 14>& start,
                const std::array<float, 14>& target,
-               float duration,
+               const std::array<float, 14>& velocity_limits,
                double now = 0.0) {
         start_ = start;
         target_ = target;
-        duration_ = std::max(0.0f, duration);
+        duration_ = 0.0f;
+        for (size_t i = 0; i < start_.size(); ++i) {
+            const float velocity = std::max(velocity_limits[i], 0.0f);
+            if (velocity > 0.0f) {
+                duration_ = std::max(duration_,
+                                     1.875f * std::abs(target_[i] - start_[i]) / velocity);
+            }
+        }
         start_time_ = now;
         active_ = duration_ > 0.0f;
         if (!active_) current_ = target_;
