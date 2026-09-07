@@ -20,6 +20,26 @@ Groot 的 `safe_home_q` 手臂关节（15–28）遵循 LeRobot 的默认零位�
 
 推理线程以 50 Hz 运行，FSM 线程以 1 kHz 合并并发布唯一的 `LowCmd`。模型已从 Hugging Face 仓库 `nepyope/GR00T-WholeBodyControl_g1` 下载，运行时不会再从网络下载模型。
 
+## Groot PD 增益
+
+`deploy/robots/g1_29dof/config/policy/groot/params/deploy.yaml` 中的 `stiffness` / `damping`
+按 SDK 的 29 关节顺序配置，并与 LeRobot
+`src/lerobot/robots/unitree_g1/config_unitree_g1.py` 的 `_GAINS` 保持一致。进入 `Groot`
+时，`State_Groot` 会将该组参数写入全部电机命令。
+
+| 关节组 | Kp | Kd |
+| --- | ---: | ---: |
+| 左右腿 hip pitch / roll / yaw | 150 | 2 |
+| 左右腿 knee | 300 | 4 |
+| 左右腿 ankle pitch / roll | 40 | 2 |
+| waist yaw / roll / pitch | 250 | 5 |
+| 左右 shoulder pitch / roll | 50 | 3 |
+| 左右 shoulder yaw / elbow | 80 | 3 |
+| 左右 wrist roll / pitch / yaw | 40 | 1.5 |
+
+不要将 `FixStand` 的独立过渡增益误作为 Groot 的策略增益；两者分别由
+`FSM.FixStand` 和 Groot `deploy.yaml` 配置。
+
 ## 模型文件
 
 Groot ONNX 模型已放置在：
