@@ -58,7 +58,7 @@ FSM:
       Passive: LT + B.on_pressed | LT.on_pressed + B
     policy_dir: config/policy/groot
     arm_transition:
-      velocity_scale: 0.01
+      velocity_scale: 0.02
     zmq:
       port: 6002
       state_port: 6001

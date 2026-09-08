@@ -45,7 +45,6 @@ State_Groot::State_Groot(int state_mode, std::string state_string)
     vla_mode_key_ = unitree::common::dsl::Compile(*unitree::common::dsl::Parser("LB + A.on_pressed | LB.on_pressed + A").Parse());
     auto_mode_key_ = unitree::common::dsl::Compile(*unitree::common::dsl::Parser("RB + Y.on_pressed | RB.on_pressed + Y").Parse());
     stand_mode_key_ = unitree::common::dsl::Compile(*unitree::common::dsl::Parser("RB + B.on_pressed | RB.on_pressed + B").Parse());
-    height_up_key_ = unitree::common::dsl::Compile(*unitree::common::dsl::Parser("RB").Parse());
     height_down_key_ = unitree::common::dsl::Compile(*unitree::common::dsl::Parser("RT").Parse());
     height_reset_key_ = unitree::common::dsl::Compile(*unitree::common::dsl::Parser("RB + X.on_pressed | RB.on_pressed + X").Parse());
     const auto cfg = param::config["FSM"][state_string];
@@ -165,7 +164,7 @@ void State_Groot::run() {
     const bool keyboard_height_down = keyboard_pressed && key == "down";
     const bool keyboard_height_reset = keyboard_pressed && (key == "r" || key == "R");
     const bool height_reset_requested = height_reset_key_(joystick) || keyboard_height_reset;
-    const bool height_up_requested = height_up_key_(joystick) || keyboard_height_up;
+    const bool height_up_requested = keyboard_height_up;
     const bool height_down_requested = height_down_key_(joystick) || keyboard_height_down;
     const bool height_adjusting = !height_reset_requested && (height_up_requested || height_down_requested);
     const bool height_released = height_adjusting_ && !height_adjusting;

@@ -34,7 +34,6 @@ private:
     std::function<bool(const unitree::common::UnitreeJoystick&)> vla_mode_key_;
     std::function<bool(const unitree::common::UnitreeJoystick&)> auto_mode_key_;
     std::function<bool(const unitree::common::UnitreeJoystick&)> stand_mode_key_;
-    std::function<bool(const unitree::common::UnitreeJoystick&)> height_up_key_;
     std::function<bool(const unitree::common::UnitreeJoystick&)> height_down_key_;
     std::function<bool(const unitree::common::UnitreeJoystick&)> height_reset_key_;
     double next_height_adjust_time_ = 0.0;
