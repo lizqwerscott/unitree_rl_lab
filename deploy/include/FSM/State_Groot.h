@@ -38,6 +38,8 @@ private:
     std::function<bool(const unitree::common::UnitreeJoystick&)> height_down_key_;
     std::function<bool(const unitree::common::UnitreeJoystick&)> height_reset_key_;
     double next_height_adjust_time_ = 0.0;
+    float last_height_logged_ = 0.74f;
+    bool height_adjusting_ = false;
     double steady_seconds() const;
 };
 

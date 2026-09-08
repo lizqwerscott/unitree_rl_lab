@@ -13,6 +13,7 @@
 #include "isaaclab/utils/utils.h"
 #include <array>
 #include <atomic>
+#include <stdexcept>
 #include "groot/GrootModeManager.h"
 
 namespace isaaclab
@@ -30,7 +31,17 @@ public:
     {
         // Parse configuration
         this->step_dt = cfg["step_dt"].as<float>();
-        groot_height_default = cfg["observations"]["height_command"]["params"]["value"].as<float>(0.74f);
+        const auto height_params = cfg["observations"]["height_command"]["params"];
+        groot_height_default = height_params["value"].as<float>(0.74f);
+        groot_height_min = height_params["min"].as<float>(0.50f);
+        groot_height_max = height_params["max"].as<float>(1.00f);
+        groot_height_step = height_params["step"].as<float>(0.001f);
+        groot_height_log_step = height_params["log_step"].as<float>(0.01f);
+        if (groot_height_min >= groot_height_max || groot_height_step <= 0.0f
+            || groot_height_log_step <= 0.0f || groot_height_default < groot_height_min
+            || groot_height_default > groot_height_max) {
+            throw std::runtime_error("Invalid height_command configuration");
+        }
         groot_height_command.store(groot_height_default);
         robot->data.joint_ids_map = cfg["joint_ids_map"].as<std::vector<float>>();
         robot->data.joint_pos.resize(robot->data.joint_ids_map.size());
@@ -145,6 +156,10 @@ public:
     std::unique_ptr<GrootRunner> groot_runner;
     std::array<float, 3> last_velocity_command{0.0f, 0.0f, 0.0f};
     float groot_height_default = 0.74f;
+    float groot_height_min = 0.50f;
+    float groot_height_max = 1.00f;
+    float groot_height_step = 0.001f;
+    float groot_height_log_step = 0.01f;
     std::atomic<float> groot_height_command{0.74f};
     std::shared_ptr<groot::GrootModeManager> groot_mode_manager;
     bool command_override = false;

@@ -19,7 +19,7 @@ actions:
     clip: null
 observations:
   velocity_commands: {params: {}, scale: [2,2,0.25], history_length: 6}
-  height_command: {params: {value: 0.74}, scale: [1], history_length: 6}
+  height_command: {params: {value: 0.74, min: 0.10, max: 2.00, step: 0.001, log_step: 0.01}, scale: [1], history_length: 6}
   orientation_command: {params: {value: [0,0,0]}, scale: [1,1,1], history_length: 6}
   base_ang_vel: {params: {}, scale: [0.25,0.25,0.25], history_length: 6}
   projected_gravity: {params: {}, scale: [1,1,1], history_length: 6}

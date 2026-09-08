@@ -4,14 +4,11 @@
 #include "isaaclab/envs/mdp/terminations.h"
 #include <spdlog/spdlog.h>
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <chrono>
 
 namespace {
-constexpr float kGrootHeightStep = 0.001f;
-constexpr float kGrootHeightMin = 0.50f;
-constexpr float kGrootHeightMax = 1.00f;
-
 std::array<float, 29> yaml_array(const YAML::Node& node, const char* key) {
     std::array<float, 29> result{};
     if (node[key] && node[key].size() == 29) {
@@ -19,6 +16,12 @@ std::array<float, 29> yaml_array(const YAML::Node& node, const char* key) {
         std::copy(values.begin(), values.end(), result.begin());
     }
     return result;
+}
+
+const char* height_status(float height, float min_height, float max_height) {
+    if (height <= min_height) return "at lower limit";
+    if (height >= max_height) return "at upper limit";
+    return "within range";
 }
 
 const char* mode_name(groot::ControlMode mode) {
@@ -86,6 +89,11 @@ void State_Groot::enter() {
         motor.dq() = 0; motor.tau() = 0;
     }
     env->reset();
+    last_height_logged_ = env->groot_height_default;
+    height_adjusting_ = false;
+    spdlog::info("Groot height: {:.3f} m (range {:.3f}..{:.3f} m, {})",
+                 env->groot_height_default, env->groot_height_min, env->groot_height_max,
+                 height_status(env->groot_height_default, env->groot_height_min, env->groot_height_max));
     first_nav_logged_ = false;
     next_height_adjust_time_ = 0.0;
     receiver->start();
@@ -156,20 +164,40 @@ void State_Groot::run() {
     const bool keyboard_height_up = keyboard_pressed && key == "up";
     const bool keyboard_height_down = keyboard_pressed && key == "down";
     const bool keyboard_height_reset = keyboard_pressed && (key == "r" || key == "R");
-    if (height_reset_key_(joystick) || keyboard_height_reset) {
+    const bool height_reset_requested = height_reset_key_(joystick) || keyboard_height_reset;
+    const bool height_up_requested = height_up_key_(joystick) || keyboard_height_up;
+    const bool height_down_requested = height_down_key_(joystick) || keyboard_height_down;
+    const bool height_adjusting = !height_reset_requested && (height_up_requested || height_down_requested);
+    const bool height_released = height_adjusting_ && !height_adjusting;
+    if (height_reset_requested) {
         env->groot_height_command.store(env->groot_height_default, std::memory_order_relaxed);
         next_height_adjust_time_ = now;
-        spdlog::info("Groot height reset to {:.3f} m", env->groot_height_default);
+        last_height_logged_ = env->groot_height_default;
+        spdlog::info("Groot height: {:.3f} m (range {:.3f}..{:.3f} m, {})",
+                     env->groot_height_default, env->groot_height_min, env->groot_height_max,
+                     height_status(env->groot_height_default, env->groot_height_min, env->groot_height_max));
     } else if (now >= next_height_adjust_time_
-               && (height_up_key_(joystick) || height_down_key_(joystick)
-                   || keyboard_height_up || keyboard_height_down)) {
-        const float direction = (height_up_key_(joystick) || keyboard_height_up) ? 1.0f : -1.0f;
+               && height_adjusting) {
+        const float direction = height_up_requested ? 1.0f : -1.0f;
         const float current = env->groot_height_command.load(std::memory_order_relaxed);
-        const float updated = std::clamp(current + direction * kGrootHeightStep,
-                                         kGrootHeightMin, kGrootHeightMax);
+        const float updated = std::clamp(current + direction * env->groot_height_step,
+                                         env->groot_height_min, env->groot_height_max);
         env->groot_height_command.store(updated, std::memory_order_relaxed);
         next_height_adjust_time_ = now + 0.02;
     }
+    if (height_released) {
+        const float current = env->groot_height_command.load(std::memory_order_relaxed);
+        const bool at_min = current <= env->groot_height_min;
+        const bool at_max = current >= env->groot_height_max;
+        const bool accumulated_change = std::fabs(current - last_height_logged_) >= env->groot_height_log_step;
+        if (current != last_height_logged_ && (at_min || at_max || accumulated_change)) {
+            spdlog::info("Groot height: {:.3f} m (range {:.3f}..{:.3f} m, {})",
+                         current, env->groot_height_min, env->groot_height_max,
+                         height_status(current, env->groot_height_min, env->groot_height_max));
+            last_height_logged_ = current;
+        }
+    }
+    height_adjusting_ = height_adjusting;
     if (receiver) {
         groot::CommandSnapshot remote;
         if (receiver->latest(remote)) mode_manager->update_vla(remote, actual, now);
