@@ -56,8 +56,8 @@ State_Groot::State_Groot(int state_mode, std::string state_string)
     register_control_mode_key(groot::ControlMode::Gamepad, "LB + X.on_pressed | LB.on_pressed + X", {"1"});
     register_locomotion_mode_key(groot::LocomotionMode::Auto, "RB + Y.on_pressed | RB.on_pressed + Y", {"m"});
     register_locomotion_mode_key(groot::LocomotionMode::Stand, "RB + B.on_pressed | RB.on_pressed + B", {"p"});
-    register_height_key(HeightAction::Up, "", {"up"});
-    register_height_key(HeightAction::Down, "RT", {"down"});
+    register_height_key(HeightAction::Up, "up", {"up"});
+    register_height_key(HeightAction::Down, "down", {"down"});
     register_height_key(HeightAction::Reset, "RB + X.on_pressed | RB.on_pressed + X", {"r", "R"});
     const auto cfg = param::config["FSM"][state_string];
     const auto policy_dir = param::parser_policy_dir(cfg["policy_dir"].as<std::string>());
