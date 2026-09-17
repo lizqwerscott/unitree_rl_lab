@@ -18,7 +18,7 @@ Passive -> FixStand -> Groot
 
 在 `Navigation` 和 `VLA` 模式下，手柄任一速度轴绝对值超过 `0.05` 时，手柄速度临时覆盖外部速度指令；松开摇杆后恢复当前模式的外部指令。`Stand` 模式仍会强制速度为零。
 
-Groot 的 `safe_home_q` 手臂关节（15–28）遵循 LeRobot 的默认零位；进入 VLA 后，Pi0.5 的第一条有效手臂指令会从当前实测姿态按 URDF 关节速度上限的 1% 平滑接管。下肢默认位仍使用 Groot 的策略默认值。
+Groot 的 `safe_home_q` 手臂关节（15–28）遵循 LeRobot 的默认零位；进入 VLA 后，Pi0.5 的手臂指令直接作为目标下发，不做过渡插值；每条指令都会与实测姿态逐关节比较，任一关节偏差超过可配置阈值（`FSM.Groot.vla.max_arm_deviation_deg`，默认 `40°`）就不接管并退回 `Gamepad`（按退出 VLA 的插值回到安全姿态）＋打印告警日志。下肢默认位仍使用 Groot 的策略默认值。
 
 推理线程以 50 Hz 运行，FSM 线程以 1 kHz 合并并发布唯一的 `LowCmd`。模型已从 Hugging Face 仓库 `nepyope/GR00T-WholeBodyControl_g1` 下载，运行时不会再从网络下载模型。
 
@@ -134,7 +134,31 @@ cmake --build build -j$(nproc)
 
 高度范围限制为 `0.50–1.00 m`。
 
-进入 `VLA` 后，首个有效 `arm_q` 会从当前实际角度按各关节 URDF 速度上限的 `velocity_scale` 使用五阶 Bezier 轨迹平滑接管；默认值为 `0.01`，位移越大，过渡时间越长，首帧到达前手臂保持安全姿态。VLA 指令超时后，下肢速度归零，手臂持续保持最后一条有效 `arm_q`，并持续保持手臂位置刚度，不会自动回到 `safe_home_q`。反向切换到 `Gamepad` 或 `Navigation` 时，手臂按该速度系数回到安全姿态。
+进入 `VLA` 后，首个有效 `arm_q` 默认直接作为手臂目标下发，不再使用五阶 Bezier 轨迹插值：手臂按 `publish_targets` 中各关节的 URDF 速度上限逐周期逼近目标，位移大时表现为以关节速度上限运动。
+
+**偏差保护**：阈值可配置，见 `config.yaml` 的 `FSM.Groot.vla.max_arm_deviation_deg`（单位：度，默认 `40`，有效范围 `1..180`；设为 `0` 或负数表示关闭该保护）。`VLA` 内**每一条**有效包都拿目标与**实测关节角**逐关节比较，任一关节超过阈值就判定这条目标会让手臂大幅跳变，**不接管手臂**，直接退出到 `Gamepad`（由退出 VLA 的既有插值把手臂平滑带回安全姿态），并打印一条 `warn` 日志，逐关节列出所有超限关节（SDK 关节名、电机序号、偏差角度）：
+
+```yaml
+    vla:
+      max_arm_deviation_deg: 40   # 0 或负数 = 关闭该保护
+```
+
+```text
+Groot VLA: arm target deviates more than 40 deg from the measured pose on 2 joint(s), exiting to Gamepad: left_shoulder_pitch_joint(motor 15) +52.5 deg right_elbow_joint(motor 25) -41.7 deg
+```
+
+启动时会打印生效值：`Groot VLA: arm deviation guard 40 deg (...)`；关闭时打印 `Groot VLA: arm deviation guard disabled (...)`。
+
+这是刻意的"目标必须与机器人实际姿态相容"闸门，因此有一个必然结果：进入 VLA 时手臂停在 `safe_home_q`（手臂段为零位），若策略当前目标离它超过阈值（例如肘 `1.0 rad ≈ 57°`，默认阈值下就会超），**这一条就不会被接管，模式当拍退回 `Gamepad`**，VLA 进不去。要让 VLA 能接管，需满足其一：
+
+- 进入 VLA 时策略目标与手臂实际姿态相差在阈值以内（例如把 `safe_home_q` 手臂段设成策略的起始位姿，或先摆好手臂）；
+- 调大 `FSM.Groot.vla.max_arm_deviation_deg`。
+
+保护只在 `VLA` 模式下生效，且每次触发后模式已退回 `Gamepad`，不会重复刷日志；退出到 `Gamepad` 后需要手动按键才能重新进入 `VLA`。
+
+**退出后回安全姿态期间禁止进入 `VLA`**：一旦离开 `VLA`（手动切换或偏差保护回退），手臂会按 Bezier 插值回到 `safe_home_q`；在这段过渡跑完之前，按 `VLA` 会被拒绝（`request_mode()` 返回 `false`，日志为 `Groot: VLA entry ignored, arm is still returning to safe_home_q`），避免被取消的过渡与 VLA 目标抢同一个手臂。过渡完成后即可正常进入。若离开 VLA 时手臂本来就在 `safe_home_q`，过渡时长为零，可以立即进入。
+
+首帧到达前手臂保持安全姿态；该首帧指进入 VLA 之后收到的新序号指令，进入前缓存的旧包不会被采用。VLA 指令超时后，下肢速度归零，手臂持续保持最后一条有效 `arm_q`，并持续保持手臂位置刚度，不会自动回到 `safe_home_q`。反向切换到 `Gamepad` 或 `Navigation` 时，手臂仍按 `arm_transition.velocity_scale`（默认 `0.02`）的 Bezier 轨迹回到安全姿态。
 
 ## 外部输入
 

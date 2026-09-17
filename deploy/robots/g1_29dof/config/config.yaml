@@ -59,6 +59,11 @@ FSM:
     policy_dir: config/policy/groot
     arm_transition:
       velocity_scale: 0.02
+    vla:
+      # VLA 手臂目标与实测姿态的最大允许偏差（度，逐关节判定）。
+      # 任一条包的任一关节超过该值即不接管手臂，直接退出到 Gamepad 并打印告警。
+      # 有效范围 1..180；设为 0 或负数表示关闭该保护。默认 40。
+      max_arm_deviation_deg: 40
     zmq:
       port: 6002
       state_port: 6001

@@ -1,11 +1,14 @@
 #include "FSM/State_Groot.h"
+#include "groot/JointNameMap.h"
 #include "isaaclab/envs/mdp/observations/observations.h"
 #include "isaaclab/envs/mdp/terminations.h"
 #include "unitree_articulation.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
+#include <string>
 #include <spdlog/spdlog.h>
 
 namespace
@@ -76,6 +79,12 @@ State_Groot::State_Groot(int state_mode, std::string state_string)
     for (size_t i = 0; i < arm_velocity_limits.size(); ++i)
         arm_velocity_limits[i] = limits_[15 + i].velocity;
     mode_manager->set_arm_velocity_limits(arm_velocity_limits, cfg["arm_transition"]["velocity_scale"].as<float>(0.5f));
+    mode_manager->set_vla_max_deviation_deg(cfg["vla"]["max_arm_deviation_deg"].as<float>(groot::GrootModeManager::kDefaultVlaMaxDeviationDeg));
+    if (mode_manager->vla_max_deviation_deg() > 0.0f)
+        spdlog::info("Groot VLA: arm deviation guard {:.0f} deg (arm target farther than this from the measured pose exits to Gamepad)",
+                     static_cast<double>(mode_manager->vla_max_deviation_deg()));
+    else
+        spdlog::warn("Groot VLA: arm deviation guard disabled (FSM.Groot.vla.max_arm_deviation_deg <= 0)");
     const auto ranges = policy_cfg["commands"]["base_velocity"]["ranges"];
     mode_manager->set_command_limits({ranges["lin_vel_x"][0].as<float>(), ranges["lin_vel_y"][0].as<float>(), ranges["ang_vel_z"][0].as<float>()},
                                      {ranges["lin_vel_x"][1].as<float>(), ranges["lin_vel_y"][1].as<float>(), ranges["ang_vel_z"][1].as<float>()});
@@ -187,6 +196,8 @@ void State_Groot::update_control_mode(double now, const std::array<float, 14> &a
         const auto old_mode = mode_manager->mode();
         if (mode_manager->request_mode(requested_mode, now, actual))
             spdlog::info("Groot: control mode {} -> {}", mode_name(old_mode), mode_name(requested_mode));
+        else
+            spdlog::info("Groot: {} entry ignored, arm is still returning to safe_home_q", mode_name(requested_mode));
     }
 }
 
@@ -226,11 +237,30 @@ void State_Groot::update_height(double now, const unitree::common::UnitreeJoysti
 
 void State_Groot::update_remote_vla(double now, const std::array<float, 14> &actual)
 {
-    if (receiver) {
-        groot::CommandSnapshot remote;
-        if (receiver->latest(remote))
-            mode_manager->update_vla(remote, actual, now);
+    if (!receiver)
+        return;
+    groot::CommandSnapshot remote;
+    if (!receiver->latest(remote))
+        return;
+    const auto guard = mode_manager->update_vla(remote, actual);
+    if (!guard)
+        return;
+    // 目标与实测姿态偏差过大：不接管手臂，直接退出到 Gamepad，
+    // 由退出 VLA 的既有插值把手臂平滑带回安全姿态；同时逐关节报出超限者。
+    const float limit_rad = mode_manager->vla_max_deviation_deg() * groot::GrootModeManager::kDegToRad;
+    std::string detail;
+    char entry[96];
+    for (size_t i = 0; i < guard->delta.size(); ++i) {
+        if (std::fabs(guard->delta[i]) <= limit_rad)
+            continue;
+        const size_t motor = groot::g1::kArmStart + i;
+        std::snprintf(entry, sizeof(entry), " %s(motor %zu) %+.1f deg", groot::g1::kSdkJointNames[motor], motor,
+                      static_cast<double>(guard->delta[i] * groot::GrootModeManager::kRadToDeg));
+        detail += entry;
     }
+    spdlog::warn("Groot VLA: arm target deviates more than {:.0f} deg from the measured pose on {} joint(s), exiting to Gamepad:{}",
+                 static_cast<double>(mode_manager->vla_max_deviation_deg()), guard->exceeded, detail);
+    mode_manager->request_mode(groot::ControlMode::Gamepad, now, actual);
 }
 
 void State_Groot::update_locomotion_mode(const unitree::common::UnitreeJoystick &joystick, const std::string &keyboard_key, bool keyboard_pressed)

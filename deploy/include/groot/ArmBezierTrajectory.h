@@ -44,6 +44,9 @@ public:
     bool finished() const { return !active_; }
     const std::array<float, 14>& current() const { return current_; }
 
+    // 立即终止过渡，后续 sample() 不再输出插值。
+    void cancel() { active_ = false; }
+
 private:
     std::array<float, 14> start_{};
     std::array<float, 14> target_{};
