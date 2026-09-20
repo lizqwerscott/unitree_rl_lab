@@ -62,6 +62,9 @@ State_Groot::State_Groot(int state_mode, std::string state_string)
     register_height_key(HeightAction::Up, "up", {"up"});
     register_height_key(HeightAction::Down, "down", {"down"});
     register_height_key(HeightAction::Reset, "RB + X.on_pressed | RB.on_pressed + X", {"r", "R"});
+    // 手动松爪：把两侧夹爪目标压到 q_max。刻意做成显式动作而不是"退出 VLA 时自动张开"，
+    // 因为 VLA 偏差保护触发时也会退出 VLA，而那一刻最可能正握着东西。
+    gripper_release_key_ = make_key_binding("RB + A.on_pressed | RB.on_pressed + A", {"g", "G"});
     const auto cfg = param::config["FSM"][state_string];
     const auto policy_dir = param::parser_policy_dir(cfg["policy_dir"].as<std::string>());
     const auto policy_cfg = YAML::LoadFile(policy_dir / "params" / "deploy.yaml");
@@ -95,6 +98,14 @@ State_Groot::State_Groot(int state_mode, std::string state_string)
     receiver = std::make_unique<groot::RemoteCommandReceiver>(cfg["zmq"]["port"].as<int>(6002));
     state_broadcaster = std::make_unique<groot::LowStateBroadcaster>(cfg["zmq"]["state_port"].as<int>(6001));
     control_state_broadcaster = std::make_unique<groot::ControlStateBroadcaster>(cfg["zmq"]["control_state_port"].as<int>(6000));
+    gripper_bridge = std::make_unique<groot::GripperBridge>(
+        cfg["zmq"]["gripper_state_port"].as<int>(6004),
+        cfg["gripper"]["kp"].as<float>(groot::dex1::kDefaultKp),
+        cfg["gripper"]["kd"].as<float>(groot::dex1::kDefaultKd),
+        cfg["gripper"]["q_min"].as<float>(groot::dex1::kDefaultQMin),
+        cfg["gripper"]["q_max"].as<float>(groot::dex1::kDefaultQMax),
+        cfg["gripper"]["max_rate_rad_per_s"].as<float>(groot::dex1::kDefaultMaxRateRadPerS),
+        cfg["gripper"]["command_timeout_s"].as<double>(groot::dex1::kDefaultCommandTimeoutS));
     registered_checks.emplace_back([&] { return isaaclab::mdp::bad_orientation(env.get(), 1.0); }, FSMStringMap.right.at("Passive"));
 }
 
@@ -324,6 +335,11 @@ void State_Groot::enter()
     control_state_broadcaster->start([manager = mode_manager]() -> groot::ControlStateBroadcaster::Snapshot {
         return manager->mode();
     });
+    gripper_bridge->start([this]() -> groot::dex1::GripperTargets {
+        groot::CommandSnapshot snapshot;
+        if (!receiver->latest(snapshot)) return {};
+        return snapshot.gripper;
+    });
     env->robot->update();
     for (size_t i = 0; i < last_published_q_.size(); ++i)
         last_published_q_[i] = env->robot->data.joint_pos[i];
@@ -360,6 +376,8 @@ void State_Groot::run()
 
     update_control_mode(now, actual, joystick, key, keyboard_pressed);
     update_height(now, joystick, key, keyboard_pressed);
+    if (key_active(gripper_release_key_, joystick, key, keyboard_pressed))
+        gripper_bridge->open_all();
     update_remote_vla(now, actual);
     update_locomotion_mode(joystick, key, keyboard_pressed);
 
@@ -374,4 +392,5 @@ void State_Groot::exit()
     receiver->stop();
     state_broadcaster->stop();
     control_state_broadcaster->stop();
+    gripper_bridge->stop();
 }

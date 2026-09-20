@@ -2,6 +2,7 @@
 
 #include "FSMState.h"
 #include "groot/ControlStateBroadcaster.h"
+#include "groot/GripperBridge.h"
 #include "groot/GrootModeManager.h"
 #include "groot/LowStateBroadcaster.h"
 #include "groot/RemoteCommandReceiver.h"
@@ -72,6 +73,7 @@ private:
     std::unique_ptr<groot::RemoteCommandReceiver> receiver;
     std::unique_ptr<groot::LowStateBroadcaster> state_broadcaster;
     std::unique_ptr<groot::ControlStateBroadcaster> control_state_broadcaster;
+    std::unique_ptr<groot::GripperBridge> gripper_bridge;
     std::thread policy_thread;
     std::atomic<bool> policy_thread_running_{false};
     std::array<float, 29> safe_home_{};
@@ -83,6 +85,7 @@ private:
     std::vector<ControlModeKey> control_mode_keys_;
     std::vector<LocomotionModeKey> locomotion_mode_keys_;
     std::vector<HeightKey> height_keys_;
+    KeyBinding gripper_release_key_;
     double next_height_adjust_time_ = 0.0;
     float last_height_logged_ = 0.74f;
     bool height_adjusting_ = false;

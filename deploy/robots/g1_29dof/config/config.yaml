@@ -69,3 +69,24 @@ FSM:
       state_port: 6001
       # 当前操控状态广播（PUB，50 Hz）：{"state":"gamepad"|"nav"|"vla"}
       control_state_port: 6000
+      # Dex1_1 夹爪实测状态广播（PUB，100 Hz）。下行夹爪目标复用 6002 的 action 帧，
+      # 不新开端口。
+      gripper_state_port: 6004
+    gripper:
+      # 夹爪电机指令参数（Dex1_1 / M4010；参考 dex1_1_service/test/test_gripper.cpp）。
+      # 这里是**唯一来源**：6002 的 action 帧只能给 q，帧内出现 kp/kd/mode 会被忽略并打 warn。
+      # 值 <= 0 时回落到内置默认值（本文件里的这两个数）。
+      kp: 5.0
+      kd: 0.05
+      # 夹爪机械量程（rad，输出侧）。q_min = 完全闭合，q_max = 完全张开。
+      # 默认是 dex1_1_service `--calibration` 写入的标定值（0.0 / 322°）。
+      # **现场必须实测一次**再据此设定：dex1_1_service 自己不校验范围，只把 q 乘 gear
+      # ratio 转发给串口伺服，所以这里的 clamp 是唯一的机械限位保护。
+      # 超出范围不丢帧：clamp 到边界并打印一条日志。
+      q_min: 0.0
+      q_max: 5.6217
+      # 安全限速：目标 q 每秒最大变化量（rad/s）。防止上位机跳变指令猛击手指。
+      max_rate_rad_per_s: 6.0
+      # 指令新鲜度门限（秒）。超时后**保持最后目标继续重发**，不松爪；仅用于日志提示。
+      # 注意：dex1_1_service 自己的看门狗是 1 s，本项不参与任何安全逻辑。
+      command_timeout_s: 0.5
