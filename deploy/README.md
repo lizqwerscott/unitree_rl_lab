@@ -220,3 +220,43 @@ angular.z -> wz
 ```
 
 `motor_state` 固定 35 项（与 unitree `hg` LowState 布局一致），约 500 Hz 广播；无订阅者时静默丢弃。
+
+### 控制状态 / ZMQ
+
+进入 `Groot` 后，控制器还会通过 ZMQ `PUB`（端口 `6000`，配置 `Groot.zmq.control_state_port`）以 **50 Hz** 持续广播当前操控状态，供上位机（VLA 推理、导航、遥操作 UI）判断当前由哪一路输入接管机器人：
+
+```json
+{
+  "state": "vla"
+}
+```
+
+`state` 只有三个取值，与 [`GrootModeManager.h`](include/groot/GrootModeManager.h) 的 `ControlMode` 一一对应：
+
+| 控制模式 | `state` |
+| --- | --- |
+| `Gamepad` | `gamepad` |
+| `Navigation` | `nav` |
+| `VLA` | `vla` |
+
+之所以定频重发而不是仅在切换时发一条：`PUB` 不保存历史，晚接入的订阅方在下次切换前收不到任何东西；50 Hz 心跳让订阅方在一个周期（20 ms）内就能拿到当前状态。无订阅者时静默丢弃，发送为 `dontwait`，不会阻塞控制线程。状态读取自 `ControlMode`，`Stand` / `Auto` 属于移动模式（`LocomotionMode`），不体现在该字段。
+
+命令行自测（需要 `python3-zmq`）：
+
+```bash
+python3 -c "
+import zmq
+s = zmq.Context().socket(zmq.SUB)
+s.setsockopt_string(zmq.SUBSCRIBE, '')
+s.connect('tcp://127.0.0.1:6000')
+while True: print(s.recv_string())
+"
+```
+
+### 输入源小结
+
+| 端口 | 方向 | 用途 |
+| --- | --- | --- |
+| `6000` | 本机 `PUB` | 广播当前控制状态（50 Hz） |
+| `6001` | 本机 `PUB` | LowState 广播（约 500 Hz） |
+| `6002` | 本机 `PULL` | 接收 VLA `action` 帧 |

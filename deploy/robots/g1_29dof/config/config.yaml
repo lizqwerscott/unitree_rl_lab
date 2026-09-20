@@ -9,7 +9,7 @@ FSM:
       type: Groot
 
   Passive:
-    transitions: 
+    transitions:
       FixStand: LT + up.on_pressed | LT.on_pressed + up
     mode: [
       1,1,1,1,1,1,
@@ -22,11 +22,11 @@ FSM:
       3,3,3,3,3,3,
       3,3,3,3,3,3,
       3,3,3,
-      3,3,3,3,3,3,3,  
-      3,3,3,3,3,3,3,  
+      3,3,3,3,3,3,3,
+      3,3,3,3,3,3,3,
     ]
   FixStand:
-    transitions: 
+    transitions:
       Passive: LT + B.on_pressed | LT.on_pressed + B
       Groot: RB + X.on_pressed | RB.on_pressed + X
     kp: [
@@ -54,7 +54,7 @@ FSM:
       ]
     ]
   Groot:
-    transitions: 
+    transitions:
       Passive: LT + B.on_pressed | LT.on_pressed + B
     policy_dir: config/policy/groot
     arm_transition:
@@ -67,3 +67,5 @@ FSM:
     zmq:
       port: 6002
       state_port: 6001
+      # 当前操控状态广播（PUB，50 Hz）：{"state":"gamepad"|"nav"|"vla"}
+      control_state_port: 6000

@@ -94,6 +94,7 @@ State_Groot::State_Groot(int state_mode, std::string state_string)
     mode_manager->set_policy_default(defaults);
     receiver = std::make_unique<groot::RemoteCommandReceiver>(cfg["zmq"]["port"].as<int>(6002));
     state_broadcaster = std::make_unique<groot::LowStateBroadcaster>(cfg["zmq"]["state_port"].as<int>(6001));
+    control_state_broadcaster = std::make_unique<groot::ControlStateBroadcaster>(cfg["zmq"]["control_state_port"].as<int>(6000));
     registered_checks.emplace_back([&] { return isaaclab::mdp::bad_orientation(env.get(), 1.0); }, FSMStringMap.right.at("Passive"));
 }
 
@@ -320,6 +321,9 @@ void State_Groot::enter()
         std::lock_guard<std::mutex> lock(lowstate->mutex_);
         return lowstate->msg_;
     });
+    control_state_broadcaster->start([manager = mode_manager]() -> groot::ControlStateBroadcaster::Snapshot {
+        return manager->mode();
+    });
     env->robot->update();
     for (size_t i = 0; i < last_published_q_.size(); ++i)
         last_published_q_[i] = env->robot->data.joint_pos[i];
@@ -369,4 +373,5 @@ void State_Groot::exit()
         policy_thread.join();
     receiver->stop();
     state_broadcaster->stop();
+    control_state_broadcaster->stop();
 }
