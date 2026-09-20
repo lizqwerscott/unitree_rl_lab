@@ -111,6 +111,7 @@ cmake --build build -j$(nproc)
 | `LB + A` | 切换 `VLA` |
 | `RB + Y` | 切换 `Auto` |
 | `RB + B` | 切换 `Stand` |
+| `RB + A` | **手动松爪**：两侧夹爪目标 → `gripper.q_max`（按 `max_rate_rad_per_s` 爬坡张开） |
 
 键盘备用按键：
 
@@ -121,6 +122,7 @@ cmake --build build -j$(nproc)
 | `3` | 切换 `VLA`；没有新鲜 ZMQ 包时速度为零、手臂保持安全姿态 |
 | `m` | `Auto`：速度范数小于 `0.05` 使用 balance，否则使用 walk |
 | `p` | `Stand`：速度强制为零并使用 balance |
+| `g` / `G` | **手动松爪**（同 `RB + A`） |
 
 高度控制：
 
@@ -253,10 +255,126 @@ while True: print(s.recv_string())
 "
 ```
 
+### Dex1_1 夹爪 / ZMQ
+
+夹爪沿用"对外全 ZMQ、内部 DDS"的范式：**下行目标复用 6002 的 action 帧**（新增一个可选
+`gripper` 块，不新开端口），**上行状态新开 PUB `6004`**。桥接层是忠实的协议转换器，只搬运
+硬件原始量纲（弧度），不做"张开/闭合"之类的语义换算——语义映射属于上位机适配层。
+
+#### 下行：6002 action 帧内的可选 `gripper` 块
+
+在原有 14 个手臂关节 + `remote.*` 之外，可选地多带一个 `gripper` 键：
+
+```json
+{
+  "cmd": "action",
+  "action": {
+    "kLeftShoulderPitch.q": -0.20, "kRightWristYaw.q": -0.01,
+    "remote.lx": 0.0, "remote.ly": 0.0, "remote.rx": 0.0, "remote.ry": 0.0,
+    "gripper": { "right": { "q": 0.0 }, "left": { "q": 5.0 } }
+  },
+  "timestamp": 1788514855.53
+}
+```
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `gripper` | 否 | 整块可选；缺失则该帧不产生任何夹爪更新，其余照旧 |
+| `gripper.<side>` | 否 | `right` / `left` 各自可选；**只给一侧时另一侧保持上次目标**（latch） |
+| `gripper.<side>.q` | 是 | 目标角度，**弧度**，输出侧量纲；必须是有限值（`NaN`/`inf` 该侧作废） |
+
+**帧里只有 `q`**。`kp` / `kd` 是机器人侧的硬件整定参数，**唯一来源是 `config.yaml` 的
+`FSM.Groot.gripper`**（默认 `5.0` / `0.05`，与 `dex1_1_service/test/test_gripper.cpp` 的参考值一致）；
+`mode` 固定为 `1`（FOC）。帧内出现 `kp`/`kd`/`mode` 会被**忽略并打一条 warn**——这样做是为了
+避免上位机（尤其是 VLA 策略）每帧重复传常量、或在运行中把刚度改坏。
+
+**量程是 clamp，不是丢帧**。`q` 超出 `FSM.Groot.gripper.q_min`/`q_max`（默认 `0.0` / `5.6217 rad`，
+即 `322°` 标定值）时，夹爪**不会**被拒绝：和手臂 `publish_targets()` 一样，先做绝对限位、再做逐周期速率限位，
+并打印一条日志（同一侧持续超限只打一次，回到范围内后再次超限会重新打）：
+
+```text
+[GripperBridge] right q=9.9000 rad is outside the calibrated range [0.0000, 5.6217]; clamped to 5.6217
+```
+
+**这里的 clamp 是唯一的机械限位保护**：`dex1_1_service` 的 `loop_()` 只做 `q * gear_ratio` 后直接发串口，
+**不做任何范围校验**。因此进入 `Groot` 前**必须现场实测一次**"完全闭合 / 完全张开"的读数，据此设定 `q_min` / `q_max`；
+照搬默认值有顶到机械限位的风险。
+
+三条必须记住的规则：
+
+- **量程独立**：手臂沿用 `|q| <= 3.2` 整帧丢弃，夹爪走上面的 clamp，两者互不影响——夹爪的合法大值不会拖累手臂，手臂的超限也不会被夹爪的 clamp "救回来"。
+- **失败隔离**：夹爪块非法（非 map、缺 `q`、类型错误、非有限值）只降级为"本帧不更新夹爪"并打一条 warn，**手臂照常生效**。
+- **手臂 14 关节仍然必填**：不存在"只发夹爪"的帧。想合一下爪子也要把 14 个手臂关节一起重发（用当前/上一拍的值即可）。
+
+桥接层**逐周期限速**（`FSM.Groot.gripper.max_rate_rad_per_s`，默认 `6.0 rad/s`，约 `1.7 s` 走完全行程），
+所以跳变指令表现为**渐变**逼近而非瞬跳。
+
+#### 上行：6004 夹爪实测状态
+
+进入 `Groot` 后通过 ZMQ `PUB`（端口 `6004`，配置 `Groot.zmq.gripper_state_port`）以 **100 Hz** 广播：
+
+```json
+{
+  "topic": "rt/dex1/state",
+  "data": {
+    "right": { "q": 0.501, "dq": 0.0, "tau_est": 0.02 },
+    "left":  { "q": 0.500, "dq": 0.0, "tau_est": 0.02 }
+  }
+}
+```
+
+字段直接透传 DDS `MotorStates_.states()[0]` 的 `q / dq / tau_est`，**不做单位换算**；数值用 `%.9g`，
+非有限值归零；无订阅者时静默丢弃，发送为 `dontwait`，不会阻塞。
+
+```bash
+python3 -c "
+import zmq
+s = zmq.Context().socket(zmq.SUB); s.setsockopt_string(zmq.SUBSCRIBE, '')
+s.connect('tcp://127.0.0.1:6004')
+for _ in range(3): print(s.recv_string())
+"
+```
+
+#### 命令行客户端 `deploy/scripts/groot_client.py`
+
+需要 `pyzmq`（`pip3 install --user pyzmq` 或 `uv pip install pyzmq`）。
+
+```bash
+# 订阅并打印：夹爪状态（6004）+ 控制模式（6000）+ 可选手臂 14 关节（6001）
+./deploy/scripts/groot_client.py watch
+./deploy/scripts/groot_client.py watch --arms
+
+# 下发夹爪目标（向 6002 发一条完整 action 帧）
+./deploy/scripts/groot_client.py grip --right 5.0            # 右爪张开
+./deploy/scripts/groot_client.py grip --right 0.0 --left 0.0 # 双爪闭合
+./deploy/scripts/groot_client.py grip --right 5.0 --follow   # 下发后继续观察
+```
+
+`grip` 的几点说明：
+
+- **手臂 14 关节默认填 0**（= Groot 的 `safe_home`；`publish_targets()` 还会再过一遍 URDF 限幅，不会顶限位），所以不依赖 6001 也能用。
+- `--echo` 改为用 6001 的**实测姿态**回填手臂。**当前是 VLA 模式时建议加它**：VLA 下 `update_vla()` 会拿帧里的 `arm_q` 与实测姿态逐关节比较，偏差超过 `FSM.Groot.vla.max_arm_deviation_deg`（默认 `40°`）就判定该目标会让手臂跳变，**不接管手臂并退出到 `Gamepad`**。填 0 时若手臂不在零位就会触发这一点；脚本检测到 `vla` 且未加 `--echo` 时会给出警告（不拦截）。
+- `remote.lx/ly/rx/ry` 填 0，因此在 VLA 模式下这条帧会让速度短暂归零（VLA 主机的下一条帧约 20 ms 内覆盖）。
+- 帧里超量程的 `q` 只打印提示，真正的 clamp 由 `GripperBridge` 执行。
+- 夹爪目标下发**一条帧就够**：桥接层会 latch 并以 100 Hz 定频重发（`--repeat` 默认 3 只是为了抗丢包）。
+
+夹爪目标与当前控制模式无关，`Gamepad` / `Navigation` / `VLA` 下都会生效（arm 通路才受模式约束）。
+
+#### 保持行为（重要）
+
+- **100 Hz 无条件重发**：`dex1_1_service` 有超时看门狗，指令流一断就切 `BRAKE` 并清零。因此即使没有新指令、即使 6002 静默，桥接层也持续按**最后的目标**重发——这正是"上位机暂停 / VLA 超时"期间**保住抓取力**的机制。
+- **指令超时（`FSM.Groot.gripper.command_timeout_s`，默认 `0.5 s`）后不松爪**：保持最后目标继续重发，不回零、不 BRAKE；该参数只用于打一条日志提示。
+- **首个夹爪目标之前不发任何指令**：进入 `Groot` 后、尚未收到任何带 `gripper` 的帧之前，桥接层保持静默（不发零位、不发默认值），只打一条日志说明在等待首个目标——避免给夹爪一个未经上位机确认的意外动作。该规则**每次进入 `Groot` 都重新成立**：退出再进入时不会用上一会话的旧目标自动恢复抓取，必须等上位机重新下发一帧。
+- **刻意与手臂状态机解耦**：夹爪不参与 `GrootModeManager` 的 VLA 偏差保护、Bezier 回归安全姿态与 `arm_transition.velocity_scale`。
+- **退出 VLA 不自动松爪**：`LB+X` 切回 `Gamepad`、或偏差保护触发退出 VLA 时，夹爪都**保持**最后目标继续重发。这是刻意的——偏差保护触发说明 VLA 策略正在输出离谱的手臂目标，而那恰恰是最可能正握着东西的时刻，此时自动张开等于主动掉件。
+- **松爪是显式动作**：手柄 `RB + A` 或键盘 `g`，把两侧目标压到 `gripper.q_max`，且仍走限速爬坡（不会瞬间弹开）。它和帧目标共用同一套 latch + 限速路径，所以**上位机的下一条带 `gripper` 的帧会立刻接管**（夹爪语义仍属于上位机）。
+- **退出 `Groot`（`LT + B` → `Passive`）时桥接层停止**：与手臂"平滑回安全姿态"不同，夹爪不会被命令到某个安全位置；但桥接线程停止后 100 Hz 重发也停止，`dex1_1_service` 的超时看门狗随后会接管该话题（切 `BRAKE`）。抓取力的保持因此只在 `Groot` 状态内成立，这是当前实现的既有边界。
+
 ### 输入源小结
 
 | 端口 | 方向 | 用途 |
 | --- | --- | --- |
 | `6000` | 本机 `PUB` | 广播当前控制状态（50 Hz） |
 | `6001` | 本机 `PUB` | LowState 广播（约 500 Hz） |
-| `6002` | 本机 `PULL` | 接收 VLA `action` 帧 |
+| `6002` | 本机 `PULL` | 接收 VLA `action` 帧（含可选 `gripper` 块） |
+| `6004` | 本机 `PUB` | Dex1_1 夹爪实测状态广播（100 Hz） |

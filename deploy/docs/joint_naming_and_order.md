@@ -117,3 +117,21 @@ pi0.5 / LeRobot 帧把 4 个摇杆轴拼在 action 尾部：`remote.lx, remote.l
 - 交叉校验：`deploy/scripts/check_joint_mapping.py`。
 - 解析器：`deploy/include/groot/RemoteCommandReceiver.h`（6002，按名、大小写不敏感）。
 - 状态广播：`deploy/include/groot/LowStateBroadcaster.h`（6001，rt/lowstate JSON）。
+
+### 5.1 夹爪（Dex1_1）
+
+夹爪**不是** 29 自由度关节表的一部分：它由独立的 `dex1_1_service`（serial ↔ DDS）驱动，
+话题为 `rt/dex1/{right,left}/{cmd,state}`，电机 ID 顺序是 **0 = right、1 = left**（注意右在前，
+与手臂的"左臂在前"相反）。它不写 `lowcmd`，也不属于 `motor_state[0..28]`。
+
+- 侧别表与默认值：`deploy/include/groot/GripperNameMap.h`（`kSides`、`kDefaultKp/Kd`、`kDefaultQMin/QMax`、`clamp_q`）。
+- 解析器：`deploy/include/groot/RemoteCommandReceiver.h`（6002 action 帧内的**可选** `gripper` 块；
+  沿用同一 `timestamp` 单调门限；只接受有限值，量程不在此处判定）。
+- DDS 桥接：`deploy/include/groot/GripperBridge.h`（100 Hz 定频重发 + 量程 clamp + 逐周期限速 + 逐侧 latch）。
+  量程来自 `FSM.Groot.gripper.q_min/q_max`：**先绝对限位、再速率限位**（与手臂 `publish_targets()` 同序），
+  超出范围 clamp 到边界并打一条日志，**不丢帧**——手臂的 `|q| <= 3.2` 整帧丢弃是另一条独立契约。
+- 状态广播：`deploy/include/groot/GripperStateBroadcaster.h`（6004，`rt/dex1/state` JSON）。
+
+夹爪的 `q` 是**输出侧弧度**，`q = 0` 为完全闭合、上限约 `5.62 rad` 为完全张开；桥接层不做
+"张开/闭合"语义换算，该映射属于上位机适配层。帧格式与保持行为见 `deploy/README.md`
+「Dex1_1 夹爪 / ZMQ」。
