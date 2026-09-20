@@ -5,8 +5,10 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 
@@ -25,6 +27,17 @@ class RemoteCommandReceiver {
 public:
     explicit RemoteCommandReceiver(int port = 6002) : port_(port) {}
     ~RemoteCommandReceiver() { stop(); }
+
+    // Logs each distinct gripper-block problem once. A malformed gripper block
+    // must never be fatal: it only downgrades to "no gripper update this frame"
+    // while the arm half of the frame keeps working (see the header docs).
+    static void gripper_warn(const char* reason) {
+        static std::mutex mutex;
+        static std::set<std::string> seen;
+        std::lock_guard<std::mutex> lock(mutex);
+        if (seen.insert(reason).second)
+            std::fprintf(stderr, "[RemoteCommandReceiver] gripper block ignored: %s\n", reason);
+    }
 
     static bool parse_packet(const std::string& payload, CommandSnapshot& out,
                              const CommandSnapshot* previous = nullptr,
@@ -73,6 +86,49 @@ public:
                 out.arm_q[slot] = value;
             }
             if (arm_count != 14) return fail("expected 14 arm joints");
+
+            // Optional gripper block. The arm contract above is unchanged; the
+            // gripper half is validated separately and every failure here only
+            // drops the gripper update for this frame, never the arm targets.
+            //
+            // Only `q` is read: kp/kd/mode belong to FSM.Groot.gripper and are
+            // ignored (with a warning) when a frame tries to set them.
+            //
+            // q is *not* range-checked here. The calibrated range lives in
+            // FSM.Groot.gripper.q_min/q_max, which a static parser cannot see,
+            // and the contract is "clamp and log", not "drop the frame" -- so
+            // out-of-range values are passed through and shaped by the bridge.
+            // Only a non-finite q is unusable and rejects the side.
+            out.gripper = {};
+            if (const YAML::Node block = action["gripper"]) {
+                if (!block.IsMap()) {
+                    gripper_warn("not a map");
+                } else {
+                    bool any = false;
+                    for (size_t side = 0; side < dex1::kNumGrippers; ++side) {
+                        try {
+                            const YAML::Node node = block[dex1::kSides[side]];
+                            if (!node || !node.IsMap()) continue;  // side absent => keep last target
+                            if (node["kp"] || node["kd"] || node["mode"])
+                                gripper_warn("kp/kd/mode come from FSM.Groot.gripper; frame values ignored");
+                            const YAML::Node q_node = node["q"];
+                            if (!q_node) { gripper_warn("side is missing q"); continue; }
+                            const float q = q_node.as<float>();
+                            if (!std::isfinite(q)) { gripper_warn("q is not finite"); continue; }
+                            out.gripper.q[side] = q;
+                            out.gripper.has_target[side] = true;
+                            any = true;
+                        } catch (...) {
+                            out.gripper.has_target[side] = false;
+                            gripper_warn("malformed side");
+                        }
+                    }
+                    out.gripper.timestamp = timestamp;
+                    out.gripper.received = std::chrono::steady_clock::now();
+                    out.gripper.valid = any;
+                }
+            }
+
             out.timestamp = timestamp;
             out.sequence = previous ? previous->sequence + 1 : 0;
             out.valid = true;

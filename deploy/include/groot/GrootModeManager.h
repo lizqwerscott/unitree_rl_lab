@@ -1,6 +1,7 @@
 #pragma once
 
 #include "groot/ArmBezierTrajectory.h"
+#include "groot/GripperNameMap.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -24,6 +25,9 @@ struct VelocityCommand {
 struct CommandSnapshot {
     VelocityCommand velocity;
     std::array<float, 14> arm_q{};
+    // Optional gripper block carried by the same action frame. Not used by the
+    // arm state machine; the GripperBridge consumes it independently.
+    dex1::GripperTargets gripper;
     uint64_t sequence = 0;
     double timestamp = 0.0;
     std::chrono::steady_clock::time_point received{};
