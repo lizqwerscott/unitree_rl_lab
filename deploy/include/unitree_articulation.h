@@ -37,6 +37,7 @@ public:
         for(int i(0); i< data.joint_ids_map.size(); i++) {
             data.joint_pos[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].q();
             data.joint_vel[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].dq();
+            data.joint_tau_est[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].tau_est();
         }
     }
 
@@ -106,6 +107,7 @@ public:
         for(int i(0); i< data.joint_ids_map.size(); i++) {
             data.joint_pos[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].q() * joint_signs[i];
             data.joint_vel[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].dq() * joint_signs[i];
+            data.joint_tau_est[i] = lowstate->msg_.motor_state()[data.joint_ids_map[i]].tau_est() * joint_signs[i];
         }
 
 		image_data_buffer_.resize(cameradata->msg_.width() * cameradata->msg_.height());

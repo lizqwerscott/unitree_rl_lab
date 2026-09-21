@@ -34,6 +34,9 @@ struct ArticulationData
     // Joint velocities of all joints.
     Eigen::VectorXf joint_vel;
 
+    // Estimated joint torques of all joints (LowState motor_state.tau_est).
+    Eigen::VectorXf joint_tau_est;
+
     // Root angular velocity in base world frame.
     Eigen::Vector3f root_ang_vel_b;
 

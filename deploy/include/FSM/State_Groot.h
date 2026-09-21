@@ -79,6 +79,13 @@ private:
     std::array<float, 29> safe_home_{};
     std::array<groot::JointLimit, 29> limits_{};
     std::array<float, 29> last_published_q_{};
+    // 上半身（电机 15..28）重力前馈：开关 + 系数，见 config.yaml FSM.Groot.arm_tau_est。
+    bool arm_tau_est_enabled_ = false;
+    float arm_tau_est_gain_ = 0.0f;
+    float arm_tau_est_alpha_ = 1.0f;
+    float arm_tau_est_max_torque_ = 5.0f;
+    bool arm_tau_est_contact_guard_ = true;
+    std::array<float, 14> arm_tau_est_lp_{};
     groot::VelocityCommand last_nav_command_{};
     bool nav_initialized_ = false;
     bool first_nav_logged_ = false;

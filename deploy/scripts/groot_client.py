@@ -28,6 +28,8 @@ Groot 夹爪 / 状态的命令行客户端。
   # 只订阅观察（Groot 在跑，6004 由 GripperStateBroadcaster 提供）
   ./groot_client.py watch
   ./groot_client.py watch --arms            # 附带手臂 14 关节 q
+  ./groot_client.py watch --tau             # 附带手臂 14 关节 tau_est（校核重力矩用）
+  ./groot_client.py watch --host 10.3.42.221 --tau --arms   # 连真机（--host 默认 127.0.0.1）
 
   # 张开 / 闭合右爪（q=0 闭合，量程上限约 5.62 为张开）
   ./groot_client.py grip --right 5.0
@@ -113,7 +115,7 @@ def cmd_watch(args):
 
     print(f"# groot_client watch: {args.host} gripper={args.gripper_port} "
           f"mode={args.mode_port} lowstate={args.lowstate_port}  (Ctrl-C 退出)")
-    if args.arms:
+    if args.arms or args.tau:
         print("# " + "  ".join(f"{n[1:]:>10}" for n in ARM_LE_ROBOT_NAMES))
     print("# " + f"{'time':>10}  {'mode':>7}  {'r.q':>8} {'r.dq':>8} {'r.tau':>8}  "
           f"{'l.q':>8} {'l.dq':>8} {'l.tau':>8}")
@@ -140,12 +142,14 @@ def cmd_watch(args):
                     f"{fmt(left.get('q'))} {fmt(left.get('dq'))} {fmt(left.get('tau_est'))}")
             print(line)
 
-            if args.arms:
-                arm_q = read_arm_q(subs["lowstate"])
-                if arm_q is None:
-                    print("           手臂：等待 6001 LowState ...")
+            for field, label, enabled in (("q", "arm q  ", args.arms), ("tau_est", "arm tau", args.tau)):
+                if not enabled:
+                    continue
+                values = read_arm_field(subs["lowstate"], field)
+                if values is None:
+                    print(f"           {label}：等待 6001 LowState ...")
                 else:
-                    print("           " + "  ".join(f"{q:>+10.4f}" for q in arm_q))
+                    print(f"           {label} " + "  ".join(fmt(v, width=10) for v in values))
 
             time.sleep(period)
     except KeyboardInterrupt:
@@ -157,14 +161,19 @@ def cmd_watch(args):
     return 0
 
 
-def read_arm_q(lowstate_sub):
-    """从 6001 的 LowState 里取手臂 14 关节实测 q；没有数据返回 None。"""
+def read_arm_field(lowstate_sub, field):
+    """从 6001 的 LowState 里取手臂 14 关节的某个字段（q / dq / tau_est）；没有数据返回 None。"""
     if not lowstate_sub or not lowstate_sub.latest:
         return None
     motors = lowstate_sub.latest.get("data", {}).get("motor_state")
     if not motors or len(motors) < ARM_MOTOR_START + NUM_ARM_JOINTS:
         return None
-    return [motors[ARM_MOTOR_START + i].get("q") for i in range(NUM_ARM_JOINTS)]
+    return [motors[ARM_MOTOR_START + i].get(field) for i in range(NUM_ARM_JOINTS)]
+
+
+def read_arm_q(lowstate_sub):
+    """从 6001 的 LowState 里取手臂 14 关节实测 q；没有数据返回 None。"""
+    return read_arm_field(lowstate_sub, "q")
 
 
 def build_action_frame(arm_q, right=None, left=None, timestamp=None):
@@ -280,16 +289,19 @@ def main():
         description="Groot 夹爪 / 状态命令行客户端",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__.split("用法：", 1)[-1])
-    parser.add_argument("--host", default="127.0.0.1", help="控制器所在主机（默认 127.0.0.1）")
     sub = parser.add_subparsers(dest="command", required=True)
 
     # watch 与 grip --follow 共用的一组「订阅 / 打印」选项。
     display = argparse.ArgumentParser(add_help=False)
+    display.add_argument("--host", default="127.0.0.1", help="控制器所在主机（默认 127.0.0.1）")
     display.add_argument("--gripper-port", type=int, default=6004, help="夹爪状态 PUB 端口")
     display.add_argument("--mode-port", type=int, default=6000, help="控制模式 PUB 端口")
     display.add_argument("--lowstate-port", type=int, default=6001, help="LowState PUB 端口")
     display.add_argument("--hz", type=float, default=5.0, help="打印频率（默认 5 Hz）")
     display.add_argument("--arms", action="store_true", help="额外打印手臂 14 关节 q")
+    display.add_argument("--tau", action="store_true",
+                         help="额外打印手臂 14 关节 tau_est（校核重力矩：固定姿态手动托/放手臂，"
+                              "看它是否随载荷变化且符号正确）")
     display.add_argument("--no-gripper", action="store_true", help="不订阅夹爪状态")
     display.add_argument("--no-mode", action="store_true", help="不订阅控制模式")
 

@@ -15,6 +15,9 @@ namespace
 {
 namespace dsl = unitree::common::dsl;
 
+// FSM 主循环周期（CtrlFSM::dt = 0.001 s，1 kHz）：速率限幅与前馈低通都按它离散化。
+constexpr float kControlPeriod = 0.001f;
+
 std::array<float, 29> yaml_array(const YAML::Node &node, const char *key)
 {
     std::array<float, 29> result{};
@@ -88,6 +91,19 @@ State_Groot::State_Groot(int state_mode, std::string state_string)
                      static_cast<double>(mode_manager->vla_max_deviation_deg()));
     else
         spdlog::warn("Groot VLA: arm deviation guard disabled (FSM.Groot.vla.max_arm_deviation_deg <= 0)");
+    const auto arm_tau_est_cfg = cfg["arm_tau_est"];
+    arm_tau_est_enabled_ = arm_tau_est_cfg["enabled"].as<bool>(false);
+    arm_tau_est_gain_ = std::clamp(arm_tau_est_cfg["gain"].as<float>(0.9f), 0.0f, 0.99f);
+    const float arm_tau_est_filter_s = std::max(arm_tau_est_cfg["filter_tau_s"].as<float>(0.1f), 0.0f);
+    arm_tau_est_alpha_ = arm_tau_est_filter_s > 1e-6f ? 1.0f - std::exp(-kControlPeriod / arm_tau_est_filter_s) : 1.0f;
+    arm_tau_est_max_torque_ = arm_tau_est_cfg["max_torque"].as<float>(5.0f);
+    arm_tau_est_contact_guard_ = arm_tau_est_cfg["contact_guard"].as<bool>(true);
+    if (arm_tau_est_enabled_)
+        spdlog::info("Groot: arm tau_est feedforward ON (joints 15..28, gain {:.2f}, low-pass tau {:.3f} s, max torque {:.1f} Nm, contact guard {})",
+                     static_cast<double>(arm_tau_est_gain_), static_cast<double>(arm_tau_est_filter_s),
+                     static_cast<double>(arm_tau_est_max_torque_), arm_tau_est_contact_guard_ ? "on" : "off");
+    else
+        spdlog::info("Groot: arm tau_est feedforward OFF (FSM.Groot.arm_tau_est.enabled = false)");
     const auto ranges = policy_cfg["commands"]["base_velocity"]["ranges"];
     mode_manager->set_command_limits({ranges["lin_vel_x"][0].as<float>(), ranges["lin_vel_y"][0].as<float>(), ranges["ang_vel_z"][0].as<float>()},
                                      {ranges["lin_vel_x"][1].as<float>(), ranges["lin_vel_y"][1].as<float>(), ranges["ang_vel_z"][1].as<float>()});
@@ -302,7 +318,24 @@ void State_Groot::publish_targets(double now)
         motor.kp() = env->robot->data.joint_stiffness[joint];
         motor.kd() = env->robot->data.joint_damping[joint];
         motor.dq() = 0;
-        motor.tau() = 0;
+        // 上半身重力前馈：实测关节力矩低通后回填，让重力由 tau 承担而非位置环 kp。
+        // 关闭时恒为 0，与旧行为一致。下半身（<15）从不写 tau，保持策略控制。
+        float tau_ff = 0.0f;
+        if (arm_tau_est_enabled_) {
+            // 前馈力矩上限：配置的 max_torque 与 URDF effort 取小（max_torque<=0 表示只用 effort）。
+            float limit = limits_[joint].effort;
+            if (arm_tau_est_max_torque_ > 0.0f && (limit <= 0.0f || arm_tau_est_max_torque_ < limit))
+                limit = arm_tau_est_max_torque_;
+            const float measured = env->robot->data.joint_tau_est[joint];
+            // 外力抑制：|tau_est| 超上限时判定为接触/外力，冻结低通（保持上次的重力估计），
+            // 不把接触力矩当前馈回填；回到范围内自动恢复。
+            if (!arm_tau_est_contact_guard_ || limit <= 0.0f || std::fabs(measured) <= limit)
+                arm_tau_est_lp_[i] += arm_tau_est_alpha_ * (measured - arm_tau_est_lp_[i]);
+            tau_ff = arm_tau_est_gain_ * arm_tau_est_lp_[i];
+            if (limit > 0.0f)
+                tau_ff = std::clamp(tau_ff, -limit, limit);
+        }
+        motor.tau() = tau_ff;
         arm[i] = std::clamp(arm[i], limits_[joint].lower, limits_[joint].upper);
         const float max_delta = limits_[joint].velocity * 0.001f;
         arm[i] = std::clamp(arm[i], last_published_q_[joint] - max_delta, last_published_q_[joint] + max_delta);
@@ -343,6 +376,7 @@ void State_Groot::enter()
     env->robot->update();
     for (size_t i = 0; i < last_published_q_.size(); ++i)
         last_published_q_[i] = env->robot->data.joint_pos[i];
+    arm_tau_est_lp_.fill(0.0f);
     policy_thread_running_ = true;
     policy_thread = std::thread([this] {
         using clock = std::chrono::steady_clock;
