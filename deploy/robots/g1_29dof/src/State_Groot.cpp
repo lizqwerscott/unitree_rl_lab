@@ -198,12 +198,11 @@ void State_Groot::update_navigation(double now)
             first_nav_logged_ = true;
             spdlog::info("Groot: first navigation velocity command received (vx={:.2f}, vy={:.2f}, wz={:.2f})", message.linear().x(), message.linear().y(), message.angular().z());
         }
-        const groot::VelocityCommand navigation{static_cast<float>(message.linear().x()), static_cast<float>(message.linear().y()), static_cast<float>(message.angular().z())};
-        if (!nav_initialized_ || navigation.vx != last_nav_command_.vx || navigation.vy != last_nav_command_.vy || navigation.wz != last_nav_command_.wz) {
-            mode_manager->update_navigation(navigation);
-            last_nav_command_ = navigation;
-            nav_initialized_ = true;
-        }
+        // 每个周期都要刷新，不能只在数值变化时刷新：GrootModeManager::velocity() 用
+        // navigation_.received 做 300 ms 新鲜度看门狗（fresh()），只在变化时写入会让一条
+        // **恒定**的 nav 速度在 0.3 s 后被判为过期、速度归零（表现为机器人停住不走）。
+        mode_manager->update_navigation({static_cast<float>(message.linear().x()), static_cast<float>(message.linear().y()),
+                                         static_cast<float>(message.angular().z())});
     }
 }
 

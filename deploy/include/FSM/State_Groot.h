@@ -86,8 +86,6 @@ private:
     float arm_tau_est_max_torque_ = 5.0f;
     bool arm_tau_est_contact_guard_ = true;
     std::array<float, 14> arm_tau_est_lp_{};
-    groot::VelocityCommand last_nav_command_{};
-    bool nav_initialized_ = false;
     bool first_nav_logged_ = false;
     std::vector<ControlModeKey> control_mode_keys_;
     std::vector<LocomotionModeKey> locomotion_mode_keys_;
